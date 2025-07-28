@@ -20,8 +20,222 @@
       {
         "command": "autodiff.runSecurityReview",
         "title": "AutoDiff: Run Security Review"
+      },
+      {
+        "command": "autodiff.runAccessibilityReview",
+        "title": "AutoDiff: Run Accessibility Review"
+      },
+      {
+        "command": "autodiff.runPerformanceReview",
+        "title": "AutoDiff: Run Performance Review"
+      },
+      {
+        "command": "autodiff.runCustomReview",
+        "title": "AutoDiff: Run Custom Review"
+      },
+      {
+        "command": "autodiff.runComprehensiveReview",
+        "title": "Run Reviews",
+        "icon": "$(play)",
+        "enablement": "true"
+      },
+      {
+        "command": "autodiff.changeBaseBranch",
+        "title": "Select Base Branch",
+        "icon": "$(git-branch)"
+      },
+      {
+        "command": "autodiff.runSettingsReview",
+        "title": "AutoDiff: Open Settings"
+      },
+      {
+        "command": "autodiff.refreshView",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "autodiff.toggleChangesView",
+        "title": "Toggle Changes View"
+      },
+      {
+        "command": "autodiff.toggleResultsView",
+        "title": "Toggle Results View"
+      },
+      {
+        "command": "autodiff.toggleSettingsView",
+        "title": "Toggle Settings View"
+      },
+      {
+        "command": "autodiff.toggleSecurityReview",
+        "title": "Toggle Security Review"
+      },
+      {
+        "command": "autodiff.toggleAccessibilityReview",
+        "title": "Toggle Accessibility Review"
+      },
+      {
+        "command": "autodiff.togglePerformanceReview",
+        "title": "Toggle Performance Review"
       }
-    ]
+    ],
+    "views": {
+      "autodiff-container": [
+        {
+          "id": "autodiffBranchView",
+          "name": "Branch",
+          "when": "true",
+          "icon": "$(git-branch)"
+        },
+        {
+          "id": "autodiffReviewView",
+          "name": "Reviews",
+          "when": "true",
+          "icon": "$(shield)"
+        },
+        {
+          "id": "autodiffChangesView",
+          "name": "Changes",
+          "when": "config.autodiff.showChangesView !== false",
+          "icon": "$(git-branch)"
+        },
+        {
+          "id": "autodiffResultsView",
+          "name": "Results",
+          "when": "config.autodiff.showResultsView !== false",
+          "icon": "$(checklist)"
+        },
+        {
+          "id": "autodiffSettingsView",
+          "name": "Settings",
+          "when": "config.autodiff.showSettingsView !== false",
+          "icon": "$(gear)"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "autodiff-container",
+          "title": "AutoDiff",
+          "icon": "$(shield)"
+        }
+      ]
+    },
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "autodiff.runComprehensiveReview",
+          "when": "true"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "autodiff.runComprehensiveReview",
+          "when": "view == autodiffReviewView",
+          "group": "navigation@0"
+        },
+        {
+          "command": "autodiff.refreshView",
+          "when": "view == autodiffChangesView",
+          "group": "navigation@1"
+        }
+      ],
+      "viewsContainer/title": [
+        {
+          "command": "autodiff.runComprehensiveReview",
+          "when": "viewContainer == autodiff-container",
+          "group": "navigation@1"
+        },
+        {
+          "command": "autodiff.toggleChangesView",
+          "when": "viewContainer == autodiff-container",
+          "group": "1_views@1"
+        },
+        {
+          "command": "autodiff.toggleResultsView",
+          "when": "viewContainer == autodiff-container",
+          "group": "1_views@2"
+        },
+        {
+          "command": "autodiff.toggleSettingsView",
+          "when": "viewContainer == autodiff-container",
+          "group": "1_views@3"
+        },
+        {
+          "command": "autodiff.runSettingsReview",
+          "when": "viewContainer == autodiff-container",
+          "group": "2_actions@1"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "AutoDiff",
+      "properties": {
+        "autodiff.defaultMode": {
+          "type": "string",
+          "enum": [
+            "security",
+            "accessibility",
+            "performance",
+            "all"
+          ],
+          "default": "security",
+          "description": "Default review mode for AutoDiff analysis"
+        },
+        "autodiff.llmProvider": {
+          "type": "string",
+          "enum": [
+            "copilot",
+            "chatgpt",
+            "gemini",
+            "claude"
+          ],
+          "enumDescriptions": [
+            "GitHub Copilot (Coming Soon - requires VS Code Language Model API)",
+            "ChatGPT (requires OpenAI API key)",
+            "Google Gemini (requires Gemini API key)",
+            "Anthropic Claude (requires API key - not yet implemented)"
+          ],
+          "default": "copilot",
+          "description": "LLM provider to use for code analysis"
+        },
+        "autodiff.showChangesView": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the Changes view in AutoDiff sidebar"
+        },
+        "autodiff.showResultsView": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the Results view in AutoDiff sidebar"
+        },
+        "autodiff.showSettingsView": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show the Settings view in AutoDiff sidebar"
+        },
+        "autodiff.enableLLMAnalysis": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable actual LLM analysis (requires API keys). When disabled, shows analysis prompt only."
+        },
+        "autodiff.openaiApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "OpenAI API Key (only needed if using ChatGPT provider)"
+        },
+        "autodiff.geminiApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Google Gemini API Key (only needed if using Gemini provider)"
+        },
+        "autodiff.baseBranch": {
+          "type": "string",
+          "default": "origin/main",
+          "description": "Base branch to compare git diff against (e.g., origin/main, main, develop)"
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
