@@ -141,7 +141,7 @@ class AutoDiffFileDecorationProvider implements vscode.FileDecorationProvider {
 
 		if (fileResult && Object.keys(fileResult.results).length > 0) {
 			// File has review results - show status based on results
-			const reviewTypes = ['security', 'accessibility', 'performance'];
+			const reviewTypes = ['security', 'accessibility', 'performance', 'quality'];
 			let hasFailures = false;
 			let hasWarnings = false;
 			let hasPass = false;
@@ -542,6 +542,7 @@ class AutoDiffTreeDataProvider implements vscode.TreeDataProvider<ReviewItem> {
 		const isSecuritySelected = this.selectedReviews.has('security');
 		const isAccessibilitySelected = this.selectedReviews.has('accessibility');
 		const isPerformanceSelected = this.selectedReviews.has('performance');
+		const isQualitySelected = this.selectedReviews.has('quality');
 
 		return Promise.resolve([
 			new ReviewItem(
@@ -566,6 +567,14 @@ class AutoDiffTreeDataProvider implements vscode.TreeDataProvider<ReviewItem> {
 				vscode.TreeItemCollapsibleState.None,
 				'performance',
 				new vscode.ThemeIcon(isPerformanceSelected ? 'check' : 'square'),
+				false
+			),
+			new ReviewItem(
+				'Quality',
+				'Check code quality and best practices',
+				vscode.TreeItemCollapsibleState.None,
+				'quality',
+				new vscode.ThemeIcon(isQualitySelected ? 'check' : 'square'),
 				false
 			)
 		]);
@@ -1029,7 +1038,7 @@ class ReviewItem extends vscode.TreeItem {
 		// Only add commands for actionable items, not info items or groups
 		if (reviewType !== 'info' && !isGroup && reviewType !== 'file') {
 			// Use toggle commands for review types in the reviews view
-			if (['security', 'accessibility', 'performance'].includes(reviewType)) {
+			if (['security', 'accessibility', 'performance', 'quality'].includes(reviewType)) {
 				this.command = {
 					command: `autodiff.toggle${reviewType.charAt(0).toUpperCase() + reviewType.slice(1)}Review`,
 					title: label,
@@ -1233,12 +1242,21 @@ export async function activate(context: vscode.ExtensionContext) {
 		await runAutoDiffReview(['performance'], reviewsProvider, sharedProviders, updateFileDecorations);
 	});
 
+	const qualityReviewDisposable = vscode.commands.registerCommand('autodiff.runQualityReview', async () => {
+		// Clear previous results before starting new review
+		reviewsProvider.clearReviewResults(['quality']);
+		updateFileDecorations();
+
+		await runAutoDiffReview(['quality'], reviewsProvider, sharedProviders, updateFileDecorations);
+	});
+
 	const customReviewDisposable = vscode.commands.registerCommand('autodiff.runCustomReview', async () => {
 		const selectedModes = await vscode.window.showQuickPick(
 			[
 				{ label: 'Security', picked: true },
 				{ label: 'Accessibility', picked: false },
-				{ label: 'Performance', picked: false }
+				{ label: 'Performance', picked: false },
+				{ label: 'Quality', picked: false }
 			],
 			{
 				canPickMany: true,
@@ -1372,6 +1390,13 @@ export async function activate(context: vscode.ExtensionContext) {
 		updateFileDecorations();
 	});
 
+	const toggleQualityReviewDisposable = vscode.commands.registerCommand('autodiff.toggleQualityReview', () => {
+		reviewsProvider.toggleReviewSelection('quality');
+		// Refresh all providers to keep them in sync
+		sharedProviders.forEach(provider => provider.refresh());
+		updateFileDecorations();
+	});
+
 	const toggleBranchComparisonDisposable = vscode.commands.registerCommand('autodiff.toggleBranchComparison', async () => {
 		const config = vscode.workspace.getConfiguration('autodiff');
 		const currentValue = config.get<boolean>('enableBranchComparison', true);
@@ -1422,6 +1447,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		securityReviewDisposable,
 		accessibilityReviewDisposable,
 		performanceReviewDisposable,
+		qualityReviewDisposable,
 		customReviewDisposable,
 		comprehensiveReviewDisposable,
 		changeBaseBranchDisposable,
@@ -1433,6 +1459,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		toggleSecurityReviewDisposable,
 		toggleAccessibilityReviewDisposable,
 		togglePerformanceReviewDisposable,
+		toggleQualityReviewDisposable,
 		toggleBranchComparisonDisposable,
 		toggleDebugOutputDisposable,
 		navigateToIssueDisposable

@@ -30,6 +30,10 @@
         "title": "AutoDiff: Run Performance Review"
       },
       {
+        "command": "autodiff.runQualityReview",
+        "title": "AutoDiff: Run Quality Review"
+      },
+      {
         "command": "autodiff.runCustomReview",
         "title": "AutoDiff: Run Custom Review"
       },
