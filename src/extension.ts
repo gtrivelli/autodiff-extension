@@ -410,9 +410,9 @@ class AutoDiffTreeDataProvider implements vscode.TreeDataProvider<ReviewItem> {
 		// Process each file in the analysis result
 		for (const fileAnalysis of analysisResult.files) {
 			if (!this.reviewResults.has(fileAnalysis.file_path)) {
-				this.reviewResults.set(fileAnalysis.file_path, { 
-					file: fileAnalysis.file_path, 
-					results: {} 
+				this.reviewResults.set(fileAnalysis.file_path, {
+					file: fileAnalysis.file_path,
+					results: {}
 				});
 			}
 
@@ -436,10 +436,10 @@ class AutoDiffTreeDataProvider implements vscode.TreeDataProvider<ReviewItem> {
 
 				if (typeIssues.length > 0) {
 					const hasHighSeverity = typeIssues.some(issue => issue.severity === Severity.HIGH);
-					const hasLowSeverity = typeIssues.some(issue => 
+					const hasLowSeverity = typeIssues.some(issue =>
 						issue.severity === Severity.LOW || issue.severity === Severity.MEDIUM
 					);
-					
+
 					const confidences = typeIssues.map(issue => issue.confidence);
 					avgConfidence = confidences.length > 0 ?
 						Math.round(confidences.reduce((a, b) => a + b, 0) / confidences.length) : 50;
@@ -480,13 +480,12 @@ class AutoDiffTreeDataProvider implements vscode.TreeDataProvider<ReviewItem> {
 
 	// Clear review results for selected review types (called before starting new review)
 	clearReviewResults(reviewTypes: string[]): void {
+		// Clear ALL previous results to avoid confusion when switching between scan types
 		for (const file of this.changedFiles) {
 			if (this.reviewResults.has(file)) {
 				const fileResult = this.reviewResults.get(file)!;
-				// Clear only the specified review types
-				for (const reviewType of reviewTypes) {
-					delete fileResult.results[reviewType];
-				}
+				// Clear ALL review types, not just the selected ones
+				fileResult.results = {};
 
 				// If no results remain, remove the file entry
 				if (Object.keys(fileResult.results).length === 0) {
@@ -686,36 +685,32 @@ class AutoDiffTreeDataProvider implements vscode.TreeDataProvider<ReviewItem> {
 			]);
 		}
 
-		// Collect all individual issues
+		// Collect all individual issues and track file statuses
 		const failedIssues: ReviewItem[] = [];
 		const warningIssues: ReviewItem[] = [];
-		const passedFiles: ReviewItem[] = [];
+		const fileStatuses = new Map<string, 'fail' | 'warning' | 'pass'>(); // Track worst status per file
 
 		results.forEach(fileResult => {
+			let worstStatus: 'fail' | 'warning' | 'pass' = 'pass';
+
 			Object.entries(fileResult.results).forEach(([reviewType, result]: [string, any]) => {
-				if (result.issues === 0) {
-					// No issues - show as passed
-					const item = new ReviewItem(
-						`${fileResult.file} - ${reviewType}`,
-						`No issues found`,
-						vscode.TreeItemCollapsibleState.None,
-						'result',
-						new vscode.ThemeIcon('check'),
-						false,
-						fileResult.file
-					);
-					passedFiles.push(item);
-				} else if (result.issueDetails && result.issueDetails.length > 0) {
-					// Show individual issues
+				// Update worst status for this file
+				if (result.status === 'fail') {
+					worstStatus = 'fail';
+				} else if (result.status === 'warning' && worstStatus !== 'fail') {
+					worstStatus = 'warning';
+				}
+
+				// Collect individual issues
+				if (result.issueDetails && result.issueDetails.length > 0) {
 					result.issueDetails.forEach((issue: IssueDTO, index: number) => {
-						const severityEmoji = DTOUtils.severityToEmoji(issue.severity);
 						const lineInfo = DTOUtils.formatLineNumbers(issue.line_numbers);
 						const item = new ReviewItem(
-							`${severityEmoji} ${issue.issue}`,
+							`${issue.issue}`,
 							`File: ${issue.file_path}\nLine: ${lineInfo}\nSeverity: ${issue.severity}\nConfidence: ${issue.confidence}%\n\nCode: ${issue.code}\n\nSuggestion: ${issue.suggestion}`,
 							vscode.TreeItemCollapsibleState.None,
 							'issue',
-							new vscode.ThemeIcon(issue.severity === Severity.HIGH ? 'error' : 'warning'),
+							undefined,
 							false,
 							issue.file_path,
 							issue // Pass the issue data for navigation
@@ -727,10 +722,10 @@ class AutoDiffTreeDataProvider implements vscode.TreeDataProvider<ReviewItem> {
 							warningIssues.push(item);
 						}
 					});
-				} else {
+				} else if (result.issues > 0) {
 					// Fallback for legacy format without issueDetails
 					const item = new ReviewItem(
-						`${fileResult.file} - ${reviewType}`,
+						`${fileResult.file}`,
 						`Issues: ${result.issues}, Confidence: ${result.confidence}%`,
 						vscode.TreeItemCollapsibleState.None,
 						'result',
@@ -743,42 +738,60 @@ class AutoDiffTreeDataProvider implements vscode.TreeDataProvider<ReviewItem> {
 						failedIssues.push(item);
 					} else if (result.status === 'warning') {
 						warningIssues.push(item);
-					} else {
-						passedFiles.push(item);
 					}
 				}
 			});
+
+			// Store the worst status for this file
+			fileStatuses.set(fileResult.file, worstStatus);
+		});
+
+		// Create passed files list - only include files that passed ALL reviews
+		const passedFiles: ReviewItem[] = [];
+		fileStatuses.forEach((status, fileName) => {
+			if (status === 'pass') {
+				const item = new ReviewItem(
+					`${fileName}`,
+					`No issues found`,
+					vscode.TreeItemCollapsibleState.None,
+					'result',
+					undefined,
+					false,
+					fileName
+				);
+				passedFiles.push(item);
+			}
 		});
 
 		// Return group headers with counts
 		const allResults: ReviewItem[] = [];
 		if (failedIssues.length > 0) {
 			allResults.push(new ReviewItem(
-				`❌ Critical Issues (${failedIssues.length})`, 
-				'Click to expand and see individual issues', 
-				vscode.TreeItemCollapsibleState.Expanded, 
-				'group', 
-				undefined, 
+				`❌ Critical Issues (${failedIssues.length})`,
+				'Click to expand and see individual issues',
+				vscode.TreeItemCollapsibleState.Expanded,
+				'group',
+				undefined,
 				true
 			));
 		}
 		if (warningIssues.length > 0) {
 			allResults.push(new ReviewItem(
-				`⚠️ Warnings (${warningIssues.length})`, 
-				'Click to expand and see individual issues', 
-				vscode.TreeItemCollapsibleState.Expanded, 
-				'group', 
-				undefined, 
+				`⚠️ Warnings (${warningIssues.length})`,
+				'Click to expand and see individual issues',
+				vscode.TreeItemCollapsibleState.Expanded,
+				'group',
+				undefined,
 				true
 			));
 		}
 		if (passedFiles.length > 0) {
 			allResults.push(new ReviewItem(
-				`✅ Passed (${passedFiles.length})`, 
-				'Click to expand and see files with no issues', 
-				vscode.TreeItemCollapsibleState.Expanded, 
-				'group', 
-				undefined, 
+				`✅ Passed (${passedFiles.length})`,
+				'Click to expand and see files with no issues',
+				vscode.TreeItemCollapsibleState.Expanded,
+				'group',
+				undefined,
 				true
 			));
 		}
@@ -790,59 +803,84 @@ class AutoDiffTreeDataProvider implements vscode.TreeDataProvider<ReviewItem> {
 		const results = Array.from(this.reviewResults.values());
 		const groupItems: ReviewItem[] = [];
 
-		results.forEach(fileResult => {
-			Object.entries(fileResult.results).forEach(([reviewType, result]: [string, any]) => {
-				if (groupLabel.startsWith('❌') && result.status === 'fail') {
-					// Show individual critical issues
-					if (result.issueDetails && result.issueDetails.length > 0) {
-						result.issueDetails.forEach((issue: IssueDTO) => {
-							const lineInfo = DTOUtils.formatLineNumbers(issue.line_numbers);
-							const item = new ReviewItem(
-								`❌ ${issue.issue}`,
-								`File: ${issue.file_path}\nLine: ${lineInfo}\nSeverity: ${issue.severity}\nConfidence: ${issue.confidence}%\n\nCode: ${issue.code}\n\nSuggestion: ${issue.suggestion}`,
-								vscode.TreeItemCollapsibleState.None,
-								'issue',
-								new vscode.ThemeIcon('error'),
-								false,
-								issue.file_path,
-								issue
-							);
-							groupItems.push(item);
-						});
+		if (groupLabel.startsWith('✅')) {
+			// For passed files, only show files that passed ALL reviews (no duplicates)
+			const fileStatuses = new Map<string, 'fail' | 'warning' | 'pass'>();
+
+			results.forEach(fileResult => {
+				let worstStatus: 'fail' | 'warning' | 'pass' = 'pass';
+
+				Object.entries(fileResult.results).forEach(([reviewType, result]: [string, any]) => {
+					if (result.status === 'fail') {
+						worstStatus = 'fail';
+					} else if (result.status === 'warning' && worstStatus !== 'fail') {
+						worstStatus = 'warning';
 					}
-				} else if (groupLabel.startsWith('⚠️') && result.status === 'warning') {
-					// Show individual warning issues
-					if (result.issueDetails && result.issueDetails.length > 0) {
-						result.issueDetails.forEach((issue: IssueDTO) => {
-							const lineInfo = DTOUtils.formatLineNumbers(issue.line_numbers);
-							const item = new ReviewItem(
-								`⚠️ ${issue.issue}`,
-								`File: ${issue.file_path}\nLine: ${lineInfo}\nSeverity: ${issue.severity}\nConfidence: ${issue.confidence}%\n\nCode: ${issue.code}\n\nSuggestion: ${issue.suggestion}`,
-								vscode.TreeItemCollapsibleState.None,
-								'issue',
-								new vscode.ThemeIcon('warning'),
-								false,
-								issue.file_path,
-								issue
-							);
-							groupItems.push(item);
-						});
-					}
-				} else if (groupLabel.startsWith('✅') && result.status === 'pass') {
-					// Show files that passed
+				});
+
+				fileStatuses.set(fileResult.file, worstStatus);
+			});
+
+			// Only show files that passed all reviews
+			fileStatuses.forEach((status, fileName) => {
+				if (status === 'pass') {
+					const fileIconName = this.getFileIconName(fileName);
 					const item = new ReviewItem(
-						`✅ ${fileResult.file} - ${reviewType}`,
-						`No issues found`,
+						`${fileName}`,
+						`✅ File passed all reviews: ${fileName}`,
 						vscode.TreeItemCollapsibleState.None,
-						'result',
-						new vscode.ThemeIcon('check'),
+						'file',
+						new vscode.ThemeIcon(fileIconName),
 						false,
-						fileResult.file
+						fileName
 					);
 					groupItems.push(item);
 				}
 			});
-		});
+		} else {
+			// For critical issues and warnings, show individual issues
+			results.forEach(fileResult => {
+				Object.entries(fileResult.results).forEach(([reviewType, result]: [string, any]) => {
+					if (groupLabel.startsWith('❌') && result.status === 'fail') {
+						// Show individual critical issues
+						if (result.issueDetails && result.issueDetails.length > 0) {
+							result.issueDetails.forEach((issue: IssueDTO) => {
+								const lineInfo = DTOUtils.formatLineNumbers(issue.line_numbers);
+								const item = new ReviewItem(
+									`${issue.issue}`,
+									`File: ${issue.file_path}\nLine: ${lineInfo}\nSeverity: ${issue.severity}\nConfidence: ${issue.confidence}%\n\nCode: ${issue.code}\n\nSuggestion: ${issue.suggestion}`,
+									vscode.TreeItemCollapsibleState.None,
+									'issue',
+									undefined,
+									false,
+									issue.file_path,
+									issue
+								);
+								groupItems.push(item);
+							});
+						}
+					} else if (groupLabel.startsWith('⚠️') && result.status === 'warning') {
+						// Show individual warning issues
+						if (result.issueDetails && result.issueDetails.length > 0) {
+							result.issueDetails.forEach((issue: IssueDTO) => {
+								const lineInfo = DTOUtils.formatLineNumbers(issue.line_numbers);
+								const item = new ReviewItem(
+									`${issue.issue}`,
+									`File: ${issue.file_path}\nLine: ${lineInfo}\nSeverity: ${issue.severity}\nConfidence: ${issue.confidence}%\n\nCode: ${issue.code}\n\nSuggestion: ${issue.suggestion}`,
+									vscode.TreeItemCollapsibleState.None,
+									'issue',
+									undefined,
+									false,
+									issue.file_path,
+									issue
+								);
+								groupItems.push(item);
+							});
+						}
+					}
+				});
+			});
+		}
 
 		return Promise.resolve(groupItems);
 	}
@@ -850,6 +888,9 @@ class AutoDiffTreeDataProvider implements vscode.TreeDataProvider<ReviewItem> {
 	private getSettingsChildren(): Thenable<ReviewItem[]> {
 		const config = vscode.workspace.getConfiguration('autodiff');
 		const llmProvider = config.get<string>('llmProvider', 'chatgpt');
+		const enableBranchComparison = config.get<boolean>('enableBranchComparison', true);
+		const baseBranch = config.get<string>('baseBranch', 'origin/main');
+		const enableDebugOutput = config.get<boolean>('enableDebugOutput', false);
 
 		return Promise.resolve([
 			new ReviewItem(
@@ -858,6 +899,22 @@ class AutoDiffTreeDataProvider implements vscode.TreeDataProvider<ReviewItem> {
 				vscode.TreeItemCollapsibleState.None,
 				'llm-provider',
 				new vscode.ThemeIcon('robot'),
+				true
+			),
+			new ReviewItem(
+				`Branch Comparison: ${enableBranchComparison ? 'Enabled' : 'Disabled'}`,
+				`Compare against: ${baseBranch}`,
+				vscode.TreeItemCollapsibleState.None,
+				'branch-comparison',
+				new vscode.ThemeIcon('git-branch'),
+				true
+			),
+			new ReviewItem(
+				`Debug Output: ${enableDebugOutput ? 'Enabled' : 'Disabled'}`,
+				'Show detailed console output during analysis',
+				vscode.TreeItemCollapsibleState.None,
+				'debug-output',
+				new vscode.ThemeIcon('debug'),
 				true
 			),
 			new ReviewItem(
@@ -996,6 +1053,24 @@ class ReviewItem extends vscode.TreeItem {
 			};
 		}
 
+		// Add branch comparison toggle command
+		if (reviewType === 'branch-comparison') {
+			this.command = {
+				command: 'autodiff.toggleBranchComparison',
+				title: 'Toggle branch comparison',
+				arguments: []
+			};
+		}
+
+		// Add debug output toggle command
+		if (reviewType === 'debug-output') {
+			this.command = {
+				command: 'autodiff.toggleDebugOutput',
+				title: 'Toggle debug output',
+				arguments: []
+			};
+		}
+
 		// Add file opening command for files
 		if (reviewType === 'file' && filePath) {
 			const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
@@ -1099,6 +1174,31 @@ export async function activate(context: vscode.ExtensionContext) {
 		showCollapseAll: false
 	});
 
+	// Set up file system watcher to refresh Changes view when files are added/deleted
+	const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+	if (workspaceFolder) {
+		const fileSystemWatcher = vscode.workspace.createFileSystemWatcher(
+			new vscode.RelativePattern(workspaceFolder, '**/*'),
+			false, // Don't ignore creates
+			true,  // Ignore changes (we only care about creates/deletes for the changes view)
+			false  // Don't ignore deletes
+		);
+
+		fileSystemWatcher.onDidCreate(() => {
+			// Refresh all providers when files are created (might be new untracked files)
+			sharedProviders.forEach(provider => provider.refresh());
+			updateFileDecorations();
+		});
+
+		fileSystemWatcher.onDidDelete(() => {
+			// Refresh all providers when files are deleted (untracked files might be removed)
+			sharedProviders.forEach(provider => provider.refresh());
+			updateFileDecorations();
+		});
+
+		context.subscriptions.push(fileSystemWatcher);
+	}
+
 	// The command has been defined in the package.json file
 	// Now provide the implementation of the command with registerCommand
 	// The commandId parameter must match the command field in package.json
@@ -1110,14 +1210,26 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	// Register the AutoDiff commands
 	const securityReviewDisposable = vscode.commands.registerCommand('autodiff.runSecurityReview', async () => {
+		// Clear previous results before starting new review
+		reviewsProvider.clearReviewResults(['security']);
+		updateFileDecorations();
+
 		await runAutoDiffReview(['security'], reviewsProvider, sharedProviders, updateFileDecorations);
 	});
 
 	const accessibilityReviewDisposable = vscode.commands.registerCommand('autodiff.runAccessibilityReview', async () => {
+		// Clear previous results before starting new review
+		reviewsProvider.clearReviewResults(['accessibility']);
+		updateFileDecorations();
+
 		await runAutoDiffReview(['accessibility'], reviewsProvider, sharedProviders, updateFileDecorations);
 	});
 
 	const performanceReviewDisposable = vscode.commands.registerCommand('autodiff.runPerformanceReview', async () => {
+		// Clear previous results before starting new review
+		reviewsProvider.clearReviewResults(['performance']);
+		updateFileDecorations();
+
 		await runAutoDiffReview(['performance'], reviewsProvider, sharedProviders, updateFileDecorations);
 	});
 
@@ -1136,6 +1248,11 @@ export async function activate(context: vscode.ExtensionContext) {
 
 		if (selectedModes && selectedModes.length > 0) {
 			const modes = selectedModes.map(mode => mode.label.toLowerCase());
+
+			// Clear previous results before starting new review
+			reviewsProvider.clearReviewResults(modes);
+			updateFileDecorations();
+
 			await runAutoDiffReview(modes, reviewsProvider, sharedProviders, updateFileDecorations);
 		}
 	});
@@ -1255,12 +1372,42 @@ export async function activate(context: vscode.ExtensionContext) {
 		updateFileDecorations();
 	});
 
+	const toggleBranchComparisonDisposable = vscode.commands.registerCommand('autodiff.toggleBranchComparison', async () => {
+		const config = vscode.workspace.getConfiguration('autodiff');
+		const currentValue = config.get<boolean>('enableBranchComparison', true);
+
+		// Toggle the setting
+		await config.update('enableBranchComparison', !currentValue, vscode.ConfigurationTarget.Workspace);
+
+		// Refresh all providers to show updated status
+		sharedProviders.forEach(provider => provider.refresh());
+
+		vscode.window.showInformationMessage(
+			`Branch comparison ${!currentValue ? 'enabled' : 'disabled'}. ${!currentValue ? 'Will compare against base branch.' : 'Will only check staged/unstaged changes.'}`
+		);
+	});
+
+	const toggleDebugOutputDisposable = vscode.commands.registerCommand('autodiff.toggleDebugOutput', async () => {
+		const config = vscode.workspace.getConfiguration('autodiff');
+		const currentValue = config.get<boolean>('enableDebugOutput', false);
+
+		// Toggle the setting
+		await config.update('enableDebugOutput', !currentValue, vscode.ConfigurationTarget.Workspace);
+
+		// Refresh all providers to show updated status
+		sharedProviders.forEach(provider => provider.refresh());
+
+		vscode.window.showInformationMessage(
+			`Debug output ${!currentValue ? 'enabled' : 'disabled'}. ${!currentValue ? 'Console output will be shown during analysis.' : 'Console output will be hidden.'}`
+		);
+	});
+
 	// Command to navigate to a specific issue
 	const navigateToIssueDisposable = vscode.commands.registerCommand('autodiff.navigateToIssue', async (filePath: string, lineNumber: number) => {
 		try {
 			const document = await vscode.workspace.openTextDocument(filePath);
 			const editor = await vscode.window.showTextDocument(document);
-			
+
 			// Navigate to the specific line
 			const position = new vscode.Position(lineNumber, 0);
 			editor.selection = new vscode.Selection(position, position);
@@ -1286,6 +1433,8 @@ export async function activate(context: vscode.ExtensionContext) {
 		toggleSecurityReviewDisposable,
 		toggleAccessibilityReviewDisposable,
 		togglePerformanceReviewDisposable,
+		toggleBranchComparisonDisposable,
+		toggleDebugOutputDisposable,
 		navigateToIssueDisposable
 	);
 }
@@ -1372,30 +1521,65 @@ async function getAvailableBranches(): Promise<string[]> {
 			return;
 		}
 
-		cp.exec('git branch -r --merged && git branch --merged', { cwd: workspaceFolder.uri.fsPath }, (error, stdout) => {
+		// First check if this is a git repository
+		cp.exec('git rev-parse --git-dir', { cwd: workspaceFolder.uri.fsPath }, (error) => {
 			if (error) {
-				// Fallback to common branch names
-				resolve(['origin/main', 'origin/master', 'main', 'master', 'develop', 'HEAD']);
+				resolve([]);
 				return;
 			}
 
-			const branches = stdout
-				.split('\n')
-				.map(line => line.trim())
-				.filter(line => line && !line.startsWith('*') && !line.includes('HEAD'))
-				.map(line => line.replace(/^origin\//, 'origin/'))
-				.sort();
+			// Get both local and remote branches
+			cp.exec('git branch -a --format="%(refname:short)"', { cwd: workspaceFolder.uri.fsPath }, (error, stdout) => {
+				if (error) {
+					// Fallback to basic branch commands
+					cp.exec('git branch -r && git branch', { cwd: workspaceFolder.uri.fsPath }, (error2, stdout2) => {
+						if (error2) {
+							resolve([]);
+							return;
+						}
 
-			// Add common defaults if not found
-			const defaults = ['origin/main', 'origin/master', 'main', 'master'];
-			for (const def of defaults) {
-				if (!branches.includes(def)) {
-					branches.unshift(def);
+						const branches = stdout2
+							.split('\n')
+							.map(line => line.trim())
+							.filter(line => line && !line.startsWith('*') && !line.includes('HEAD'))
+							.map(line => line.replace(/^remotes\//, ''))
+							.sort();
+
+						resolve([...new Set(branches)]);
+					});
+					return;
 				}
-			}
 
-			resolve([...new Set(branches)]); // Remove duplicates
+				const branches = stdout
+					.split('\n')
+					.map(line => line.trim())
+					.filter(line => line && !line.includes('HEAD'))
+					.map(line => {
+						// Handle remote branch format
+						if (line.startsWith('origin/')) {
+							return line;
+						}
+						// Local branches - keep as is unless they have a remote tracking branch
+						return line;
+					})
+					.sort();
+
+				resolve([...new Set(branches)]);
+			});
 		});
+	});
+}
+
+// Function to check if a branch exists
+async function branchExists(branchName: string, workspacePath: string): Promise<boolean> {
+	return new Promise((resolve) => {
+		// Check if the branch exists locally or as a remote reference
+		cp.exec(`git show-ref --verify --quiet refs/heads/${branchName} || git show-ref --verify --quiet refs/remotes/${branchName}`,
+			{ cwd: workspacePath },
+			(error) => {
+				resolve(!error);
+			}
+		);
 	});
 }
 
@@ -1435,24 +1619,6 @@ async function runAutoDiffReview(modes: string[], provider?: AutoDiffTreeDataPro
 				return;
 			}
 
-			// Create output channel
-			const outputChannel = vscode.window.createOutputChannel('AutoDiff Results');
-			outputChannel.show();
-			outputChannel.appendLine('=== AutoDiff Analysis Starting ===\n');
-			outputChannel.appendLine(`Working directory: ${workspaceFolder.uri.fsPath}\n`);
-
-			if (hasTrackedChanges) {
-				outputChannel.appendLine(`📝 Found tracked changes to review\n`);
-			}
-			if (hasUntrackedFiles) {
-				outputChannel.appendLine(`📂 Found ${untrackedFiles.length} untracked files: ${untrackedFiles.join(', ')}\n`);
-			}
-
-			// Run Python script
-			const extensionPath = path.dirname(path.dirname(__filename)); // Go up from dist/ to extension root
-			const backendPath = path.join(extensionPath, 'backend');
-			const pythonScript = path.join(backendPath, 'main.py');
-
 			// Get configuration
 			const config = vscode.workspace.getConfiguration('autodiff');
 			const llmProvider = config.get<string>('llmProvider', 'copilot');
@@ -1460,6 +1626,28 @@ async function runAutoDiffReview(modes: string[], provider?: AutoDiffTreeDataPro
 			const chatgptApiKey = config.get<string>('openaiApiKey', '');
 			const geminiApiKey = config.get<string>('geminiApiKey', '');
 			const baseBranch = config.get<string>('baseBranch', 'origin/main');
+			const enableDebugOutput = config.get<boolean>('enableDebugOutput', false);
+
+			// Create output channel only if debug output is enabled
+			let outputChannel: vscode.OutputChannel | null = null;
+			if (enableDebugOutput) {
+				outputChannel = vscode.window.createOutputChannel('AutoDiff Results');
+				outputChannel.show();
+				outputChannel.appendLine('=== AutoDiff Analysis Starting ===\n');
+				outputChannel.appendLine(`Working directory: ${workspaceFolder.uri.fsPath}\n`);
+
+				if (hasTrackedChanges) {
+					outputChannel.appendLine(`📝 Found tracked changes to review\n`);
+				}
+				if (hasUntrackedFiles) {
+					outputChannel.appendLine(`📂 Found ${untrackedFiles.length} untracked files: ${untrackedFiles.join(', ')}\n`);
+				}
+			}
+
+			// Setup Python script path
+			const extensionPath = path.dirname(path.dirname(__filename)); // Go up from dist/ to extension root
+			const backendPath = path.join(extensionPath, 'backend');
+			const pythonScript = path.join(backendPath, 'main.py');
 
 			const args = [
 				'--modes', ...modes,
@@ -1470,24 +1658,34 @@ async function runAutoDiffReview(modes: string[], provider?: AutoDiffTreeDataPro
 			// Add --include-untracked flag if we have untracked files
 			if (hasUntrackedFiles) {
 				args.push('--include-untracked');
-				outputChannel.appendLine(`🔍 Including untracked files in analysis\n`);
+				if (outputChannel) {
+					outputChannel.appendLine(`🔍 Including untracked files in analysis\n`);
+				}
 			}
 
 			// Add dry-run if LLM analysis is disabled or no API key configured
 			if (!enableLLMAnalysis) {
 				args.push('--dry-run');
-				outputChannel.appendLine('ℹ️  Running in dry-run mode (LLM analysis disabled). Enable in settings to get actual analysis.\n');
+				if (outputChannel) {
+					outputChannel.appendLine('ℹ️  Running in dry-run mode (LLM analysis disabled). Enable in settings to get actual analysis.\n');
+				}
 			} else if (llmProvider === 'chatgpt' && !chatgptApiKey) {
 				args.push('--dry-run');
-				outputChannel.appendLine('ℹ️  Running in dry-run mode (ChatGPT API key not configured). Set API key in settings for actual analysis.\n');
+				if (outputChannel) {
+					outputChannel.appendLine('ℹ️  Running in dry-run mode (ChatGPT API key not configured). Set API key in settings for actual analysis.\n');
+				}
 			} else if (llmProvider === 'gemini' && !geminiApiKey) {
 				args.push('--dry-run');
-				outputChannel.appendLine('ℹ️  Running in dry-run mode (Gemini API key not configured). Set API key in settings for actual analysis.\n');
+				if (outputChannel) {
+					outputChannel.appendLine('ℹ️  Running in dry-run mode (Gemini API key not configured). Set API key in settings for actual analysis.\n');
+				}
 			} else if (llmProvider === 'copilot') {
 				// Handle Copilot provider with VS Code Language Model API
 				try {
-					outputChannel.appendLine('🤖 Using GitHub Copilot for analysis...\n');
-					const analysisResult = await runCopilotAnalysis(modes, diffContent, outputChannel);
+					if (outputChannel) {
+						outputChannel.appendLine('🤖 Using GitHub Copilot for analysis...\n');
+					}
+					const analysisResult = await runCopilotAnalysis(modes, diffContent, outputChannel || vscode.window.createOutputChannel('AutoDiff Results'));
 					if (analysisResult) {
 						// Pass the result to Python for formatting and output
 						args.push('--llm-result', analysisResult);
@@ -1495,19 +1693,25 @@ async function runAutoDiffReview(modes: string[], provider?: AutoDiffTreeDataPro
 					} else {
 						// Fallback to dry-run if Copilot analysis fails
 						args.push('--dry-run');
-						outputChannel.appendLine('⚠️  Copilot analysis failed, falling back to dry-run mode.\n');
-						outputChannel.appendLine('💡 GitHub Copilot integration is coming soon! For now, try OpenAI provider with an API key.\n');
+						if (outputChannel) {
+							outputChannel.appendLine('⚠️  Copilot analysis failed, falling back to dry-run mode.\n');
+							outputChannel.appendLine('💡 GitHub Copilot integration is coming soon! For now, try OpenAI provider with an API key.\n');
+						}
 					}
 				} catch (error) {
-					outputChannel.appendLine(`⚠️  Copilot analysis error: ${error}\n`);
-					outputChannel.appendLine('💡 GitHub Copilot integration is coming soon! For now, try ChatGPT or Gemini provider with an API key.\n');
+					if (outputChannel) {
+						outputChannel.appendLine(`⚠️  Copilot analysis error: ${error}\n`);
+						outputChannel.appendLine('💡 GitHub Copilot integration is coming soon! For now, try ChatGPT or Gemini provider with an API key.\n');
+					}
 					args.push('--dry-run');
 				}
 			} else if (llmProvider === 'claude') {
 				// Claude is not yet implemented
 				args.push('--dry-run');
-				outputChannel.appendLine('ℹ️  Running in dry-run mode (Claude provider not yet implemented).\n');
-				outputChannel.appendLine('💡 Anthropic Claude support is planned for a future release. For now, try ChatGPT or Gemini provider.\n');
+				if (outputChannel) {
+					outputChannel.appendLine('ℹ️  Running in dry-run mode (Claude provider not yet implemented).\n');
+					outputChannel.appendLine('💡 Anthropic Claude support is planned for a future release. For now, try ChatGPT or Gemini provider.\n');
+				}
 			} else {
 				// Add provider configuration
 				args.push('--provider', llmProvider);
@@ -1519,39 +1723,45 @@ async function runAutoDiffReview(modes: string[], provider?: AutoDiffTreeDataPro
 					args.push('--gemini-api-key', geminiApiKey);
 				}
 
-				outputChannel.appendLine(`🤖 Using ${llmProvider.charAt(0).toUpperCase() + llmProvider.slice(1)} provider for analysis...\n`);
+				if (outputChannel) {
+					outputChannel.appendLine(`🤖 Using ${llmProvider.charAt(0).toUpperCase() + llmProvider.slice(1)} provider for analysis...\n`);
+				}
 			}
 
-			const pythonOutput = await runPythonScript(pythonScript, args, workspaceFolder.uri.fsPath, outputChannel);
+			const pythonOutput = await runPythonScript(pythonScript, args, workspaceFolder.uri.fsPath, outputChannel || vscode.window.createOutputChannel('AutoDiff Results'));
 
 			// Parse results and update provider if we have one
 			if (provider && pythonOutput) {
 				// Try to parse as JSON first (new DTO format)
 				// The output may contain mixed text, so extract just the JSON part
 				let jsonString = pythonOutput.trim();
-				
+
 				// Look for JSON object in the output (starts with { and ends with })
 				// Handle multiline JSON properly
 				const jsonStart = pythonOutput.indexOf('{');
 				const jsonEnd = pythonOutput.lastIndexOf('}');
-				
+
 				if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
 					jsonString = pythonOutput.substring(jsonStart, jsonEnd + 1);
 				}
-				
+
 				const analysisResult = DTOUtils.parseFromJSON(jsonString);
-				
+
 				if (analysisResult) {
 					// Use new DTO system
-					outputChannel.appendLine(`📊 Analysis complete: ${analysisResult.total_issues} issues found across ${analysisResult.files.length} files\n`);
-					
+					if (outputChannel) {
+						outputChannel.appendLine(`📊 Analysis complete: ${analysisResult.total_issues} issues found across ${analysisResult.files.length} files\n`);
+					}
+
 					// Update provider with new DTO results
 					provider.updateReviewResultsFromDTO(analysisResult, modes);
 				} else {
 					// Fallback to legacy parsing for backward compatibility
 					const results = parseReviewResults(pythonOutput);
-					outputChannel.appendLine(`📊 Analysis complete: ${results.length} issues found (legacy format)\n`);
-					
+					if (outputChannel) {
+						outputChannel.appendLine(`📊 Analysis complete: ${results.length} issues found (legacy format)\n`);
+					}
+
 					if (results.length > 0) {
 						// Group results by review type based on the analysis that was performed
 						if (modes.length === 1) {
@@ -1586,10 +1796,10 @@ async function runAutoDiffReview(modes: string[], provider?: AutoDiffTreeDataPro
 		} catch (error) {
 			let errorMessage = `AutoDiff analysis failed: ${error}`;
 			let showErrorMessage = true;
-			
+
 			// Check for different types of errors and provide helpful guidance
 			const errorStr = String(error).toLowerCase();
-			
+
 			// Handle quota/rate limit errors
 			if (errorStr.includes('quota') || errorStr.includes('rate limit') || errorStr.includes('429')) {
 				if (errorStr.includes('gemini')) {
@@ -1635,7 +1845,7 @@ async function runAutoDiffReview(modes: string[], provider?: AutoDiffTreeDataPro
 			else if (errorStr.includes('server error') || errorStr.includes('500') || errorStr.includes('502') || errorStr.includes('503') || errorStr.includes('service unavailable')) {
 				const providerName = errorStr.includes('gemini') ? 'Gemini' : errorStr.includes('openai') ? 'OpenAI' : 'API';
 				errorMessage = `${providerName} servers are experiencing issues (${errorStr.includes('503') ? 'service unavailable' : 'server error'}). This is usually temporary.`;
-				
+
 				// For server errors, offer more options including dry-run mode
 				vscode.window.showWarningMessage(errorMessage, 'Try Again', 'Switch Provider', 'Run Dry-Run').then(selection => {
 					if (selection === 'Try Again') {
@@ -1649,7 +1859,7 @@ async function runAutoDiffReview(modes: string[], provider?: AutoDiffTreeDataPro
 						// Temporarily disable LLM analysis and run in dry-run mode
 						const config = vscode.workspace.getConfiguration('autodiff');
 						const originalValue = config.get<boolean>('enableLLMAnalysis', false);
-						
+
 						// Temporarily disable LLM analysis
 						config.update('enableLLMAnalysis', false, vscode.ConfigurationTarget.Workspace).then(() => {
 							// Run the analysis in dry-run mode
@@ -1673,7 +1883,7 @@ async function runAutoDiffReview(modes: string[], provider?: AutoDiffTreeDataPro
 				});
 				showErrorMessage = false;
 			}
-			
+
 			if (showErrorMessage) {
 				vscode.window.showErrorMessage(errorMessage);
 			}
@@ -1698,7 +1908,7 @@ async function isPythonAvailable(): Promise<boolean> {
 }
 
 async function getGitDiff(workspacePath: string): Promise<string> {
-	return new Promise((resolve, reject) => {
+	return new Promise(async (resolve, reject) => {
 		// First check if this is a git repository
 		cp.exec('git rev-parse --git-dir', { cwd: workspacePath }, (error) => {
 			if (error) {
@@ -1706,26 +1916,45 @@ async function getGitDiff(workspacePath: string): Promise<string> {
 				return;
 			}
 
-			// Get configured base branch
+			// Get configuration
 			const config = vscode.workspace.getConfiguration('autodiff');
 			const baseBranch = config.get<string>('baseBranch', 'origin/main');
+			const enableBranchComparison = config.get<boolean>('enableBranchComparison', true);
 
 			// Try staged changes first
-			cp.exec('git diff --staged', { cwd: workspacePath }, (error, stdout, stderr) => {
+			cp.exec('git diff --staged', { cwd: workspacePath }, async (error, stdout, stderr) => {
 				if (!error && stdout.trim()) {
 					// Found staged changes
 					resolve(stdout);
 					return;
 				}
 
-				// Try comparing against base branch
-				cp.exec(`git diff ${baseBranch}`, { cwd: workspacePath }, (error2, stdout2, stderr2) => {
-					if (!error2 && stdout2.trim()) {
-						// Found changes against base branch
-						resolve(stdout2);
+				// Check if branch comparison is enabled
+				if (enableBranchComparison) {
+					// Check if the base branch exists
+					const branchExistsResult = await branchExists(baseBranch, workspacePath);
+					if (!branchExistsResult) {
+						reject(`Base branch '${baseBranch}' does not exist. Please select a valid branch or disable branch comparison in settings.`);
 						return;
 					}
 
+					// Try comparing against base branch
+					cp.exec(`git diff ${baseBranch}`, { cwd: workspacePath }, (error2, stdout2, stderr2) => {
+						if (!error2 && stdout2.trim()) {
+							// Found changes against base branch
+							resolve(stdout2);
+							return;
+						}
+
+						// Continue with local changes fallback
+						tryLocalChanges();
+					});
+				} else {
+					// Branch comparison disabled, skip to local changes
+					tryLocalChanges();
+				}
+
+				function tryLocalChanges() {
 					// Try unstaged changes as fallback
 					cp.exec('git diff', { cwd: workspacePath }, (error3, stdout3, stderr3) => {
 						if (!error3 && stdout3.trim()) {
@@ -1746,7 +1975,7 @@ async function getGitDiff(workspacePath: string): Promise<string> {
 							resolve('');
 						});
 					});
-				});
+				}
 			});
 		});
 	});

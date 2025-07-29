@@ -39,7 +39,7 @@ export interface AnalysisResultDTO {
 
 // Utility functions for working with DTOs
 export class DTOUtils {
-    
+
     static parseIssueDTO(data: any): IssueDTO {
         return {
             issue: data.issue || 'Unknown issue',
@@ -52,7 +52,7 @@ export class DTOUtils {
             file_path: data.file_path
         };
     }
-    
+
     static parseFileAnalysisDTO(data: any): FileAnalysisDTO {
         return {
             file_path: data.file_path || '',
@@ -60,7 +60,7 @@ export class DTOUtils {
             review_types_analyzed: data.review_types_analyzed || []
         };
     }
-    
+
     static parseAnalysisResultDTO(data: any): AnalysisResultDTO {
         return {
             files: (data.files || []).map((file: any) => DTOUtils.parseFileAnalysisDTO(file)),
@@ -69,17 +69,17 @@ export class DTOUtils {
             review_types: data.review_types || []
         };
     }
-    
+
     static parseFromJSON(jsonString: string): AnalysisResultDTO | null {
         try {
             // Add temporary debug logging
             console.log('DTOUtils.parseFromJSON: Input length:', jsonString.length);
             console.log('DTOUtils.parseFromJSON: First 100 chars:', jsonString.substring(0, 100));
             console.log('DTOUtils.parseFromJSON: Last 100 chars:', jsonString.substring(Math.max(0, jsonString.length - 100)));
-            
+
             const data = JSON.parse(jsonString);
             console.log('DTOUtils.parseFromJSON: Parse successful, data.total_issues:', data.total_issues);
-            
+
             return DTOUtils.parseAnalysisResultDTO(data);
         } catch (error) {
             console.error('Error parsing AnalysisResultDTO from JSON:', error);
@@ -88,7 +88,7 @@ export class DTOUtils {
             return null;
         }
     }
-    
+
     // Convert severity to file decoration status
     static severityToStatus(severity: Severity): 'pass' | 'fail' | 'warning' {
         switch (severity) {
@@ -102,7 +102,7 @@ export class DTOUtils {
                 return 'warning';
         }
     }
-    
+
     // Get emoji for severity
     static severityToEmoji(severity: Severity): string {
         switch (severity) {
@@ -116,7 +116,7 @@ export class DTOUtils {
                 return '⚠️';
         }
     }
-    
+
     // Format line numbers for display
     static formatLineNumbers(lineNumbers: number[]): string {
         if (lineNumbers.length === 0) {
@@ -125,13 +125,13 @@ export class DTOUtils {
         if (lineNumbers.length === 1) {
             return lineNumbers[0].toString();
         }
-        
+
         // Check if it's a continuous range
         const sorted = [...lineNumbers].sort((a, b) => a - b);
         let ranges: string[] = [];
         let start = sorted[0];
         let end = sorted[0];
-        
+
         for (let i = 1; i <= sorted.length; i++) {
             if (i < sorted.length && sorted[i] === end + 1) {
                 end = sorted[i];
@@ -146,7 +146,7 @@ export class DTOUtils {
                 }
             }
         }
-        
+
         return ranges.join(', ');
     }
 }

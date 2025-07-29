@@ -45,6 +45,14 @@
         "icon": "$(git-branch)"
       },
       {
+        "command": "autodiff.toggleBranchComparison",
+        "title": "Toggle Branch Comparison"
+      },
+      {
+        "command": "autodiff.toggleDebugOutput",
+        "title": "Toggle Debug Output"
+      },
+      {
         "command": "autodiff.runSettingsReview",
         "title": "AutoDiff: Open Settings"
       },
@@ -233,6 +241,16 @@
           "type": "string",
           "default": "origin/main",
           "description": "Base branch to compare git diff against (e.g., origin/main, main, develop)"
+        },
+        "autodiff.enableBranchComparison": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable comparing changes against the base branch. When disabled, only analyzes staged and unstaged changes."
+        },
+        "autodiff.enableDebugOutput": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show detailed console output during analysis for debugging purposes."
         }
       }
     }

@@ -501,9 +501,7 @@ var AutoDiffTreeDataProvider = class {
     for (const file of this.changedFiles) {
       if (this.reviewResults.has(file)) {
         const fileResult = this.reviewResults.get(file);
-        for (const reviewType of reviewTypes) {
-          delete fileResult.results[reviewType];
-        }
+        fileResult.results = {};
         if (Object.keys(fileResult.results).length === 0) {
           this.reviewResults.delete(file);
         }
@@ -673,26 +671,20 @@ var AutoDiffTreeDataProvider = class {
     }
     const failedIssues = [];
     const warningIssues = [];
-    const passedFiles = [];
+    const fileStatuses = /* @__PURE__ */ new Map();
     results.forEach((fileResult) => {
+      let worstStatus = "pass";
       Object.entries(fileResult.results).forEach(([reviewType, result2]) => {
-        if (result2.issues === 0) {
-          const item = new ReviewItem(
-            `${fileResult.file} - ${reviewType}`,
-            `No issues found`,
-            vscode.TreeItemCollapsibleState.None,
-            "result",
-            new vscode.ThemeIcon("check"),
-            false,
-            fileResult.file
-          );
-          passedFiles.push(item);
-        } else if (result2.issueDetails && result2.issueDetails.length > 0) {
+        if (result2.status === "fail") {
+          worstStatus = "fail";
+        } else if (result2.status === "warning" && worstStatus !== "fail") {
+          worstStatus = "warning";
+        }
+        if (result2.issueDetails && result2.issueDetails.length > 0) {
           result2.issueDetails.forEach((issue, index) => {
-            const severityEmoji = DTOUtils.severityToEmoji(issue.severity);
             const lineInfo = DTOUtils.formatLineNumbers(issue.line_numbers);
             const item = new ReviewItem(
-              `${severityEmoji} ${issue.issue}`,
+              `${issue.issue}`,
               `File: ${issue.file_path}
 Line: ${lineInfo}
 Severity: ${issue.severity}
@@ -703,7 +695,7 @@ Code: ${issue.code}
 Suggestion: ${issue.suggestion}`,
               vscode.TreeItemCollapsibleState.None,
               "issue",
-              new vscode.ThemeIcon(issue.severity === "High" /* HIGH */ ? "error" : "warning"),
+              void 0,
               false,
               issue.file_path,
               issue
@@ -715,9 +707,9 @@ Suggestion: ${issue.suggestion}`,
               warningIssues.push(item);
             }
           });
-        } else {
+        } else if (result2.issues > 0) {
           const item = new ReviewItem(
-            `${fileResult.file} - ${reviewType}`,
+            `${fileResult.file}`,
             `Issues: ${result2.issues}, Confidence: ${result2.confidence}%`,
             vscode.TreeItemCollapsibleState.None,
             "result",
@@ -729,11 +721,25 @@ Suggestion: ${issue.suggestion}`,
             failedIssues.push(item);
           } else if (result2.status === "warning") {
             warningIssues.push(item);
-          } else {
-            passedFiles.push(item);
           }
         }
       });
+      fileStatuses.set(fileResult.file, worstStatus);
+    });
+    const passedFiles = [];
+    fileStatuses.forEach((status, fileName) => {
+      if (status === "pass") {
+        const item = new ReviewItem(
+          `${fileName}`,
+          `No issues found`,
+          vscode.TreeItemCollapsibleState.None,
+          "result",
+          void 0,
+          false,
+          fileName
+        );
+        passedFiles.push(item);
+      }
     });
     const allResults = [];
     if (failedIssues.length > 0) {
@@ -771,75 +777,97 @@ Suggestion: ${issue.suggestion}`,
   getResultsGroupChildren(groupLabel) {
     const results = Array.from(this.reviewResults.values());
     const groupItems = [];
-    results.forEach((fileResult) => {
-      Object.entries(fileResult.results).forEach(([reviewType, result2]) => {
-        if (groupLabel.startsWith("\u274C") && result2.status === "fail") {
-          if (result2.issueDetails && result2.issueDetails.length > 0) {
-            result2.issueDetails.forEach((issue) => {
-              const lineInfo = DTOUtils.formatLineNumbers(issue.line_numbers);
-              const item = new ReviewItem(
-                `\u274C ${issue.issue}`,
-                `File: ${issue.file_path}
-Line: ${lineInfo}
-Severity: ${issue.severity}
-Confidence: ${issue.confidence}%
-
-Code: ${issue.code}
-
-Suggestion: ${issue.suggestion}`,
-                vscode.TreeItemCollapsibleState.None,
-                "issue",
-                new vscode.ThemeIcon("error"),
-                false,
-                issue.file_path,
-                issue
-              );
-              groupItems.push(item);
-            });
+    if (groupLabel.startsWith("\u2705")) {
+      const fileStatuses = /* @__PURE__ */ new Map();
+      results.forEach((fileResult) => {
+        let worstStatus = "pass";
+        Object.entries(fileResult.results).forEach(([reviewType, result2]) => {
+          if (result2.status === "fail") {
+            worstStatus = "fail";
+          } else if (result2.status === "warning" && worstStatus !== "fail") {
+            worstStatus = "warning";
           }
-        } else if (groupLabel.startsWith("\u26A0\uFE0F") && result2.status === "warning") {
-          if (result2.issueDetails && result2.issueDetails.length > 0) {
-            result2.issueDetails.forEach((issue) => {
-              const lineInfo = DTOUtils.formatLineNumbers(issue.line_numbers);
-              const item = new ReviewItem(
-                `\u26A0\uFE0F ${issue.issue}`,
-                `File: ${issue.file_path}
-Line: ${lineInfo}
-Severity: ${issue.severity}
-Confidence: ${issue.confidence}%
-
-Code: ${issue.code}
-
-Suggestion: ${issue.suggestion}`,
-                vscode.TreeItemCollapsibleState.None,
-                "issue",
-                new vscode.ThemeIcon("warning"),
-                false,
-                issue.file_path,
-                issue
-              );
-              groupItems.push(item);
-            });
-          }
-        } else if (groupLabel.startsWith("\u2705") && result2.status === "pass") {
+        });
+        fileStatuses.set(fileResult.file, worstStatus);
+      });
+      fileStatuses.forEach((status, fileName) => {
+        if (status === "pass") {
+          const fileIconName = this.getFileIconName(fileName);
           const item = new ReviewItem(
-            `\u2705 ${fileResult.file} - ${reviewType}`,
-            `No issues found`,
+            `${fileName}`,
+            `\u2705 File passed all reviews: ${fileName}`,
             vscode.TreeItemCollapsibleState.None,
-            "result",
-            new vscode.ThemeIcon("check"),
+            "file",
+            new vscode.ThemeIcon(fileIconName),
             false,
-            fileResult.file
+            fileName
           );
           groupItems.push(item);
         }
       });
-    });
+    } else {
+      results.forEach((fileResult) => {
+        Object.entries(fileResult.results).forEach(([reviewType, result2]) => {
+          if (groupLabel.startsWith("\u274C") && result2.status === "fail") {
+            if (result2.issueDetails && result2.issueDetails.length > 0) {
+              result2.issueDetails.forEach((issue) => {
+                const lineInfo = DTOUtils.formatLineNumbers(issue.line_numbers);
+                const item = new ReviewItem(
+                  `${issue.issue}`,
+                  `File: ${issue.file_path}
+Line: ${lineInfo}
+Severity: ${issue.severity}
+Confidence: ${issue.confidence}%
+
+Code: ${issue.code}
+
+Suggestion: ${issue.suggestion}`,
+                  vscode.TreeItemCollapsibleState.None,
+                  "issue",
+                  void 0,
+                  false,
+                  issue.file_path,
+                  issue
+                );
+                groupItems.push(item);
+              });
+            }
+          } else if (groupLabel.startsWith("\u26A0\uFE0F") && result2.status === "warning") {
+            if (result2.issueDetails && result2.issueDetails.length > 0) {
+              result2.issueDetails.forEach((issue) => {
+                const lineInfo = DTOUtils.formatLineNumbers(issue.line_numbers);
+                const item = new ReviewItem(
+                  `${issue.issue}`,
+                  `File: ${issue.file_path}
+Line: ${lineInfo}
+Severity: ${issue.severity}
+Confidence: ${issue.confidence}%
+
+Code: ${issue.code}
+
+Suggestion: ${issue.suggestion}`,
+                  vscode.TreeItemCollapsibleState.None,
+                  "issue",
+                  void 0,
+                  false,
+                  issue.file_path,
+                  issue
+                );
+                groupItems.push(item);
+              });
+            }
+          }
+        });
+      });
+    }
     return Promise.resolve(groupItems);
   }
   getSettingsChildren() {
     const config = vscode.workspace.getConfiguration("autodiff");
     const llmProvider = config.get("llmProvider", "chatgpt");
+    const enableBranchComparison = config.get("enableBranchComparison", true);
+    const baseBranch = config.get("baseBranch", "origin/main");
+    const enableDebugOutput = config.get("enableDebugOutput", false);
     return Promise.resolve([
       new ReviewItem(
         `LLM Provider: ${llmProvider}`,
@@ -847,6 +875,22 @@ Suggestion: ${issue.suggestion}`,
         vscode.TreeItemCollapsibleState.None,
         "llm-provider",
         new vscode.ThemeIcon("robot"),
+        true
+      ),
+      new ReviewItem(
+        `Branch Comparison: ${enableBranchComparison ? "Enabled" : "Disabled"}`,
+        `Compare against: ${baseBranch}`,
+        vscode.TreeItemCollapsibleState.None,
+        "branch-comparison",
+        new vscode.ThemeIcon("git-branch"),
+        true
+      ),
+      new ReviewItem(
+        `Debug Output: ${enableDebugOutput ? "Enabled" : "Disabled"}`,
+        "Show detailed console output during analysis",
+        vscode.TreeItemCollapsibleState.None,
+        "debug-output",
+        new vscode.ThemeIcon("debug"),
         true
       ),
       new ReviewItem(
@@ -968,6 +1012,20 @@ var ReviewItem = class extends vscode.TreeItem {
         // Pass the branch name as argument
       };
     }
+    if (reviewType === "branch-comparison") {
+      this.command = {
+        command: "autodiff.toggleBranchComparison",
+        title: "Toggle branch comparison",
+        arguments: []
+      };
+    }
+    if (reviewType === "debug-output") {
+      this.command = {
+        command: "autodiff.toggleDebugOutput",
+        title: "Toggle debug output",
+        arguments: []
+      };
+    }
     if (reviewType === "file" && filePath) {
       const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
       if (workspaceFolder) {
@@ -1041,16 +1099,43 @@ async function activate(context) {
     treeDataProvider: settingsProvider,
     showCollapseAll: false
   });
+  const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+  if (workspaceFolder) {
+    const fileSystemWatcher = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(workspaceFolder, "**/*"),
+      false,
+      // Don't ignore creates
+      true,
+      // Ignore changes (we only care about creates/deletes for the changes view)
+      false
+      // Don't ignore deletes
+    );
+    fileSystemWatcher.onDidCreate(() => {
+      sharedProviders.forEach((provider) => provider.refresh());
+      updateFileDecorations();
+    });
+    fileSystemWatcher.onDidDelete(() => {
+      sharedProviders.forEach((provider) => provider.refresh());
+      updateFileDecorations();
+    });
+    context.subscriptions.push(fileSystemWatcher);
+  }
   const disposable = vscode.commands.registerCommand("autodiff.helloWorld", () => {
     vscode.window.showInformationMessage("Hello World from autodiff!");
   });
   const securityReviewDisposable = vscode.commands.registerCommand("autodiff.runSecurityReview", async () => {
+    reviewsProvider.clearReviewResults(["security"]);
+    updateFileDecorations();
     await runAutoDiffReview(["security"], reviewsProvider, sharedProviders, updateFileDecorations);
   });
   const accessibilityReviewDisposable = vscode.commands.registerCommand("autodiff.runAccessibilityReview", async () => {
+    reviewsProvider.clearReviewResults(["accessibility"]);
+    updateFileDecorations();
     await runAutoDiffReview(["accessibility"], reviewsProvider, sharedProviders, updateFileDecorations);
   });
   const performanceReviewDisposable = vscode.commands.registerCommand("autodiff.runPerformanceReview", async () => {
+    reviewsProvider.clearReviewResults(["performance"]);
+    updateFileDecorations();
     await runAutoDiffReview(["performance"], reviewsProvider, sharedProviders, updateFileDecorations);
   });
   const customReviewDisposable = vscode.commands.registerCommand("autodiff.runCustomReview", async () => {
@@ -1067,6 +1152,8 @@ async function activate(context) {
     );
     if (selectedModes && selectedModes.length > 0) {
       const modes = selectedModes.map((mode) => mode.label.toLowerCase());
+      reviewsProvider.clearReviewResults(modes);
+      updateFileDecorations();
       await runAutoDiffReview(modes, reviewsProvider, sharedProviders, updateFileDecorations);
     }
   });
@@ -1155,6 +1242,24 @@ async function activate(context) {
     sharedProviders.forEach((provider) => provider.refresh());
     updateFileDecorations();
   });
+  const toggleBranchComparisonDisposable = vscode.commands.registerCommand("autodiff.toggleBranchComparison", async () => {
+    const config = vscode.workspace.getConfiguration("autodiff");
+    const currentValue = config.get("enableBranchComparison", true);
+    await config.update("enableBranchComparison", !currentValue, vscode.ConfigurationTarget.Workspace);
+    sharedProviders.forEach((provider) => provider.refresh());
+    vscode.window.showInformationMessage(
+      `Branch comparison ${!currentValue ? "enabled" : "disabled"}. ${!currentValue ? "Will compare against base branch." : "Will only check staged/unstaged changes."}`
+    );
+  });
+  const toggleDebugOutputDisposable = vscode.commands.registerCommand("autodiff.toggleDebugOutput", async () => {
+    const config = vscode.workspace.getConfiguration("autodiff");
+    const currentValue = config.get("enableDebugOutput", false);
+    await config.update("enableDebugOutput", !currentValue, vscode.ConfigurationTarget.Workspace);
+    sharedProviders.forEach((provider) => provider.refresh());
+    vscode.window.showInformationMessage(
+      `Debug output ${!currentValue ? "enabled" : "disabled"}. ${!currentValue ? "Console output will be shown during analysis." : "Console output will be hidden."}`
+    );
+  });
   const navigateToIssueDisposable = vscode.commands.registerCommand("autodiff.navigateToIssue", async (filePath, lineNumber) => {
     try {
       const document = await vscode.workspace.openTextDocument(filePath);
@@ -1182,6 +1287,8 @@ async function activate(context) {
     toggleSecurityReviewDisposable,
     toggleAccessibilityReviewDisposable,
     togglePerformanceReviewDisposable,
+    toggleBranchComparisonDisposable,
+    toggleDebugOutputDisposable,
     navigateToIssueDisposable
   );
 }
@@ -1249,20 +1356,43 @@ async function getAvailableBranches() {
       resolve([]);
       return;
     }
-    cp.exec("git branch -r --merged && git branch --merged", { cwd: workspaceFolder.uri.fsPath }, (error, stdout) => {
+    cp.exec("git rev-parse --git-dir", { cwd: workspaceFolder.uri.fsPath }, (error) => {
       if (error) {
-        resolve(["origin/main", "origin/master", "main", "master", "develop", "HEAD"]);
+        resolve([]);
         return;
       }
-      const branches = stdout.split("\n").map((line) => line.trim()).filter((line) => line && !line.startsWith("*") && !line.includes("HEAD")).map((line) => line.replace(/^origin\//, "origin/")).sort();
-      const defaults = ["origin/main", "origin/master", "main", "master"];
-      for (const def of defaults) {
-        if (!branches.includes(def)) {
-          branches.unshift(def);
+      cp.exec('git branch -a --format="%(refname:short)"', { cwd: workspaceFolder.uri.fsPath }, (error2, stdout) => {
+        if (error2) {
+          cp.exec("git branch -r && git branch", { cwd: workspaceFolder.uri.fsPath }, (error22, stdout2) => {
+            if (error22) {
+              resolve([]);
+              return;
+            }
+            const branches2 = stdout2.split("\n").map((line) => line.trim()).filter((line) => line && !line.startsWith("*") && !line.includes("HEAD")).map((line) => line.replace(/^remotes\//, "")).sort();
+            resolve([...new Set(branches2)]);
+          });
+          return;
         }
-      }
-      resolve([...new Set(branches)]);
+        const branches = stdout.split("\n").map((line) => line.trim()).filter((line) => line && !line.includes("HEAD")).map((line) => {
+          if (line.startsWith("origin/")) {
+            return line;
+          }
+          return line;
+        }).sort();
+        resolve([...new Set(branches)]);
+      });
     });
+  });
+}
+async function branchExists(branchName, workspacePath) {
+  return new Promise((resolve) => {
+    cp.exec(
+      `git show-ref --verify --quiet refs/heads/${branchName} || git show-ref --verify --quiet refs/remotes/${branchName}`,
+      { cwd: workspacePath },
+      (error) => {
+        resolve(!error);
+      }
+    );
   });
 }
 async function runAutoDiffReview(modes, provider, sharedProviders, updateFileDecorations) {
@@ -1289,28 +1419,32 @@ async function runAutoDiffReview(modes, provider, sharedProviders, updateFileDec
         vscode.window.showInformationMessage("No git changes found to review. Make some changes to your files first, then try again.");
         return;
       }
-      const outputChannel = vscode.window.createOutputChannel("AutoDiff Results");
-      outputChannel.show();
-      outputChannel.appendLine("=== AutoDiff Analysis Starting ===\n");
-      outputChannel.appendLine(`Working directory: ${workspaceFolder.uri.fsPath}
-`);
-      if (hasTrackedChanges) {
-        outputChannel.appendLine(`\u{1F4DD} Found tracked changes to review
-`);
-      }
-      if (hasUntrackedFiles) {
-        outputChannel.appendLine(`\u{1F4C2} Found ${untrackedFiles.length} untracked files: ${untrackedFiles.join(", ")}
-`);
-      }
-      const extensionPath = path.dirname(path.dirname(__filename));
-      const backendPath = path.join(extensionPath, "backend");
-      const pythonScript = path.join(backendPath, "main.py");
       const config = vscode.workspace.getConfiguration("autodiff");
       const llmProvider = config.get("llmProvider", "copilot");
       const enableLLMAnalysis = config.get("enableLLMAnalysis", false);
       const chatgptApiKey = config.get("openaiApiKey", "");
       const geminiApiKey = config.get("geminiApiKey", "");
       const baseBranch = config.get("baseBranch", "origin/main");
+      const enableDebugOutput = config.get("enableDebugOutput", false);
+      let outputChannel = null;
+      if (enableDebugOutput) {
+        outputChannel = vscode.window.createOutputChannel("AutoDiff Results");
+        outputChannel.show();
+        outputChannel.appendLine("=== AutoDiff Analysis Starting ===\n");
+        outputChannel.appendLine(`Working directory: ${workspaceFolder.uri.fsPath}
+`);
+        if (hasTrackedChanges) {
+          outputChannel.appendLine(`\u{1F4DD} Found tracked changes to review
+`);
+        }
+        if (hasUntrackedFiles) {
+          outputChannel.appendLine(`\u{1F4C2} Found ${untrackedFiles.length} untracked files: ${untrackedFiles.join(", ")}
+`);
+        }
+      }
+      const extensionPath = path.dirname(path.dirname(__filename));
+      const backendPath = path.join(extensionPath, "backend");
+      const pythonScript = path.join(backendPath, "main.py");
       const args = [
         "--modes",
         ...modes,
@@ -1322,40 +1456,56 @@ async function runAutoDiffReview(modes, provider, sharedProviders, updateFileDec
       ];
       if (hasUntrackedFiles) {
         args.push("--include-untracked");
-        outputChannel.appendLine(`\u{1F50D} Including untracked files in analysis
+        if (outputChannel) {
+          outputChannel.appendLine(`\u{1F50D} Including untracked files in analysis
 `);
+        }
       }
       if (!enableLLMAnalysis) {
         args.push("--dry-run");
-        outputChannel.appendLine("\u2139\uFE0F  Running in dry-run mode (LLM analysis disabled). Enable in settings to get actual analysis.\n");
+        if (outputChannel) {
+          outputChannel.appendLine("\u2139\uFE0F  Running in dry-run mode (LLM analysis disabled). Enable in settings to get actual analysis.\n");
+        }
       } else if (llmProvider === "chatgpt" && !chatgptApiKey) {
         args.push("--dry-run");
-        outputChannel.appendLine("\u2139\uFE0F  Running in dry-run mode (ChatGPT API key not configured). Set API key in settings for actual analysis.\n");
+        if (outputChannel) {
+          outputChannel.appendLine("\u2139\uFE0F  Running in dry-run mode (ChatGPT API key not configured). Set API key in settings for actual analysis.\n");
+        }
       } else if (llmProvider === "gemini" && !geminiApiKey) {
         args.push("--dry-run");
-        outputChannel.appendLine("\u2139\uFE0F  Running in dry-run mode (Gemini API key not configured). Set API key in settings for actual analysis.\n");
+        if (outputChannel) {
+          outputChannel.appendLine("\u2139\uFE0F  Running in dry-run mode (Gemini API key not configured). Set API key in settings for actual analysis.\n");
+        }
       } else if (llmProvider === "copilot") {
         try {
-          outputChannel.appendLine("\u{1F916} Using GitHub Copilot for analysis...\n");
-          const analysisResult = await runCopilotAnalysis(modes, diffContent, outputChannel);
+          if (outputChannel) {
+            outputChannel.appendLine("\u{1F916} Using GitHub Copilot for analysis...\n");
+          }
+          const analysisResult = await runCopilotAnalysis(modes, diffContent, outputChannel || vscode.window.createOutputChannel("AutoDiff Results"));
           if (analysisResult) {
             args.push("--llm-result", analysisResult);
             args.push("--provider", llmProvider);
           } else {
             args.push("--dry-run");
-            outputChannel.appendLine("\u26A0\uFE0F  Copilot analysis failed, falling back to dry-run mode.\n");
-            outputChannel.appendLine("\u{1F4A1} GitHub Copilot integration is coming soon! For now, try OpenAI provider with an API key.\n");
+            if (outputChannel) {
+              outputChannel.appendLine("\u26A0\uFE0F  Copilot analysis failed, falling back to dry-run mode.\n");
+              outputChannel.appendLine("\u{1F4A1} GitHub Copilot integration is coming soon! For now, try OpenAI provider with an API key.\n");
+            }
           }
         } catch (error) {
-          outputChannel.appendLine(`\u26A0\uFE0F  Copilot analysis error: ${error}
+          if (outputChannel) {
+            outputChannel.appendLine(`\u26A0\uFE0F  Copilot analysis error: ${error}
 `);
-          outputChannel.appendLine("\u{1F4A1} GitHub Copilot integration is coming soon! For now, try ChatGPT or Gemini provider with an API key.\n");
+            outputChannel.appendLine("\u{1F4A1} GitHub Copilot integration is coming soon! For now, try ChatGPT or Gemini provider with an API key.\n");
+          }
           args.push("--dry-run");
         }
       } else if (llmProvider === "claude") {
         args.push("--dry-run");
-        outputChannel.appendLine("\u2139\uFE0F  Running in dry-run mode (Claude provider not yet implemented).\n");
-        outputChannel.appendLine("\u{1F4A1} Anthropic Claude support is planned for a future release. For now, try ChatGPT or Gemini provider.\n");
+        if (outputChannel) {
+          outputChannel.appendLine("\u2139\uFE0F  Running in dry-run mode (Claude provider not yet implemented).\n");
+          outputChannel.appendLine("\u{1F4A1} Anthropic Claude support is planned for a future release. For now, try ChatGPT or Gemini provider.\n");
+        }
       } else {
         args.push("--provider", llmProvider);
         if (llmProvider === "chatgpt" && chatgptApiKey) {
@@ -1363,10 +1513,12 @@ async function runAutoDiffReview(modes, provider, sharedProviders, updateFileDec
         } else if (llmProvider === "gemini" && geminiApiKey) {
           args.push("--gemini-api-key", geminiApiKey);
         }
-        outputChannel.appendLine(`\u{1F916} Using ${llmProvider.charAt(0).toUpperCase() + llmProvider.slice(1)} provider for analysis...
+        if (outputChannel) {
+          outputChannel.appendLine(`\u{1F916} Using ${llmProvider.charAt(0).toUpperCase() + llmProvider.slice(1)} provider for analysis...
 `);
+        }
       }
-      const pythonOutput = await runPythonScript(pythonScript, args, workspaceFolder.uri.fsPath, outputChannel);
+      const pythonOutput = await runPythonScript(pythonScript, args, workspaceFolder.uri.fsPath, outputChannel || vscode.window.createOutputChannel("AutoDiff Results"));
       if (provider && pythonOutput) {
         let jsonString = pythonOutput.trim();
         const jsonStart = pythonOutput.indexOf("{");
@@ -1376,13 +1528,17 @@ async function runAutoDiffReview(modes, provider, sharedProviders, updateFileDec
         }
         const analysisResult = DTOUtils.parseFromJSON(jsonString);
         if (analysisResult) {
-          outputChannel.appendLine(`\u{1F4CA} Analysis complete: ${analysisResult.total_issues} issues found across ${analysisResult.files.length} files
+          if (outputChannel) {
+            outputChannel.appendLine(`\u{1F4CA} Analysis complete: ${analysisResult.total_issues} issues found across ${analysisResult.files.length} files
 `);
+          }
           provider.updateReviewResultsFromDTO(analysisResult, modes);
         } else {
           const results = parseReviewResults(pythonOutput);
-          outputChannel.appendLine(`\u{1F4CA} Analysis complete: ${results.length} issues found (legacy format)
+          if (outputChannel) {
+            outputChannel.appendLine(`\u{1F4CA} Analysis complete: ${results.length} issues found (legacy format)
 `);
+          }
           if (results.length > 0) {
             if (modes.length === 1) {
               provider.updateReviewResults(modes[0], results);
@@ -1498,7 +1654,7 @@ async function isPythonAvailable() {
   });
 }
 async function getGitDiff(workspacePath) {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     cp.exec("git rev-parse --git-dir", { cwd: workspacePath }, (error) => {
       if (error) {
         reject(`Not a git repository. Please open a folder that contains a git repository.`);
@@ -1506,16 +1662,29 @@ async function getGitDiff(workspacePath) {
       }
       const config = vscode.workspace.getConfiguration("autodiff");
       const baseBranch = config.get("baseBranch", "origin/main");
-      cp.exec("git diff --staged", { cwd: workspacePath }, (error2, stdout, stderr) => {
+      const enableBranchComparison = config.get("enableBranchComparison", true);
+      cp.exec("git diff --staged", { cwd: workspacePath }, async (error2, stdout, stderr) => {
         if (!error2 && stdout.trim()) {
           resolve(stdout);
           return;
         }
-        cp.exec(`git diff ${baseBranch}`, { cwd: workspacePath }, (error22, stdout2, stderr2) => {
-          if (!error22 && stdout2.trim()) {
-            resolve(stdout2);
+        if (enableBranchComparison) {
+          const branchExistsResult = await branchExists(baseBranch, workspacePath);
+          if (!branchExistsResult) {
+            reject(`Base branch '${baseBranch}' does not exist. Please select a valid branch or disable branch comparison in settings.`);
             return;
           }
+          cp.exec(`git diff ${baseBranch}`, { cwd: workspacePath }, (error22, stdout2, stderr2) => {
+            if (!error22 && stdout2.trim()) {
+              resolve(stdout2);
+              return;
+            }
+            tryLocalChanges();
+          });
+        } else {
+          tryLocalChanges();
+        }
+        function tryLocalChanges() {
           cp.exec("git diff", { cwd: workspacePath }, (error3, stdout3, stderr3) => {
             if (!error3 && stdout3.trim()) {
               resolve(stdout3);
@@ -1529,7 +1698,7 @@ async function getGitDiff(workspacePath) {
               resolve("");
             });
           });
-        });
+        }
       });
     });
   });
