@@ -14,10 +14,6 @@
   "contributes": {
     "commands": [
       {
-        "command": "autodiff.helloWorld",
-        "title": "Hello World"
-      },
-      {
         "command": "autodiff.runSecurityReview",
         "title": "AutoDiff: Run Security Review"
       },
@@ -57,10 +53,6 @@
         "title": "Toggle Debug Output"
       },
       {
-        "command": "autodiff.runSettingsReview",
-        "title": "AutoDiff: Open Settings"
-      },
-      {
         "command": "autodiff.refreshView",
         "title": "Refresh",
         "icon": "$(refresh)"
@@ -88,6 +80,10 @@
       {
         "command": "autodiff.togglePerformanceReview",
         "title": "Toggle Performance Review"
+      },
+      {
+        "command": "autodiff.toggleQualityReview",
+        "title": "Toggle Quality Review"
       }
     ],
     "views": {
@@ -157,56 +153,23 @@
           "command": "autodiff.runComprehensiveReview",
           "when": "viewContainer == autodiff-container",
           "group": "navigation@1"
-        },
-        {
-          "command": "autodiff.toggleChangesView",
-          "when": "viewContainer == autodiff-container",
-          "group": "1_views@1"
-        },
-        {
-          "command": "autodiff.toggleResultsView",
-          "when": "viewContainer == autodiff-container",
-          "group": "1_views@2"
-        },
-        {
-          "command": "autodiff.toggleSettingsView",
-          "when": "viewContainer == autodiff-container",
-          "group": "1_views@3"
-        },
-        {
-          "command": "autodiff.runSettingsReview",
-          "when": "viewContainer == autodiff-container",
-          "group": "2_actions@1"
         }
       ]
     },
     "configuration": {
       "title": "AutoDiff",
       "properties": {
-        "autodiff.defaultMode": {
-          "type": "string",
-          "enum": [
-            "security",
-            "accessibility",
-            "performance",
-            "all"
-          ],
-          "default": "security",
-          "description": "Default review mode for AutoDiff analysis"
-        },
         "autodiff.llmProvider": {
           "type": "string",
           "enum": [
             "copilot",
             "chatgpt",
-            "gemini",
-            "claude"
+            "gemini"
           ],
           "enumDescriptions": [
-            "GitHub Copilot (Coming Soon - requires VS Code Language Model API)",
+            "GitHub Copilot (requires VS Code Language Model API)",
             "ChatGPT (requires OpenAI API key)",
-            "Google Gemini (requires Gemini API key)",
-            "Anthropic Claude (requires API key - not yet implemented)"
+            "Google Gemini (requires Gemini API key)"
           ],
           "default": "copilot",
           "description": "LLM provider to use for code analysis"
