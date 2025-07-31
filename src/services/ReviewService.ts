@@ -113,7 +113,7 @@ export class ReviewService {
                 // Handle different provider configurations
                 await this.configureProviderArgs(args, modes, diffContent, enableLLMAnalysis, llmProvider, chatgptApiKey, geminiApiKey, claudeApiKey, outputChannel);
 
-                const pythonOutput = await runPythonScript(pythonScript, args, workspaceFolder.uri.fsPath, outputChannel || vscode.window.createOutputChannel('AutoDiff Results'));
+                const pythonOutput = await runPythonScript(pythonScript, args, workspaceFolder.uri.fsPath, outputChannel);
 
                 // Parse results and update provider if we have one
                 if (provider && pythonOutput) {

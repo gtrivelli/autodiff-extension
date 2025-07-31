@@ -31,7 +31,7 @@ export async function runPythonScript(
     scriptPath: string,
     args: string[],
     workingDir: string,
-    outputChannel: vscode.OutputChannel
+    outputChannel: vscode.OutputChannel | null
 ): Promise<string> {
     return new Promise(async (resolve, reject) => {
         // Detect the available Python command first
