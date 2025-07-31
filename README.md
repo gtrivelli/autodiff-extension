@@ -63,7 +63,7 @@ Access these commands via the Command Palette (`Ctrl+Shift+P`):
 
 ### Backend Setup (for External LLM Providers)
 
-If you want to use external LLM providers instead of Copilot:
+If you want to use external LLM providers:
 
 1. **Navigate to the backend directory**:
    ```bash
@@ -174,7 +174,6 @@ Suggestion: Add aria-label or descriptive text
 
 ## 🐛 Known Issues
 
-- Copilot integration is not yet supported
 - Large diffs may exceed token limits for some LLM models
 - Backend server must be running for external LLM provider features
 
