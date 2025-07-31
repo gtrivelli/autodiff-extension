@@ -14,30 +14,14 @@
   "contributes": {
     "commands": [
       {
-        "command": "autodiff.runSecurityReview",
-        "title": "AutoDiff: Run Security Review"
-      },
-      {
-        "command": "autodiff.runAccessibilityReview",
-        "title": "AutoDiff: Run Accessibility Review"
-      },
-      {
-        "command": "autodiff.runPerformanceReview",
-        "title": "AutoDiff: Run Performance Review"
-      },
-      {
-        "command": "autodiff.runQualityReview",
-        "title": "AutoDiff: Run Quality Review"
-      },
-      {
-        "command": "autodiff.runCustomReview",
-        "title": "AutoDiff: Run Custom Review"
-      },
-      {
         "command": "autodiff.runComprehensiveReview",
         "title": "Run Reviews",
         "icon": "$(play)",
         "enablement": "true"
+      },
+      {
+        "command": "autodiff.runCustomReview",
+        "title": "AutoDiff: Run Custom Review"
       },
       {
         "command": "autodiff.changeBaseBranch",
@@ -56,18 +40,6 @@
         "command": "autodiff.refreshView",
         "title": "Refresh",
         "icon": "$(refresh)"
-      },
-      {
-        "command": "autodiff.toggleChangesView",
-        "title": "Toggle Changes View"
-      },
-      {
-        "command": "autodiff.toggleResultsView",
-        "title": "Toggle Results View"
-      },
-      {
-        "command": "autodiff.toggleSettingsView",
-        "title": "Toggle Settings View"
       },
       {
         "command": "autodiff.toggleSecurityReview",
@@ -103,20 +75,14 @@
         {
           "id": "autodiffChangesView",
           "name": "Changes",
-          "when": "config.autodiff.showChangesView !== false",
+          "when": "true",
           "icon": "$(git-branch)"
         },
         {
           "id": "autodiffResultsView",
           "name": "Results",
-          "when": "config.autodiff.showResultsView !== false",
+          "when": "true",
           "icon": "$(checklist)"
-        },
-        {
-          "id": "autodiffSettingsView",
-          "name": "Settings",
-          "when": "config.autodiff.showSettingsView !== false",
-          "icon": "$(gear)"
         }
       ]
     },
@@ -162,32 +128,17 @@
         "autodiff.llmProvider": {
           "type": "string",
           "enum": [
-            "copilot",
             "chatgpt",
-            "gemini"
+            "gemini",
+            "claude"
           ],
           "enumDescriptions": [
-            "GitHub Copilot (requires VS Code Language Model API)",
             "ChatGPT (requires OpenAI API key)",
-            "Google Gemini (requires Gemini API key)"
+            "Google Gemini (requires Gemini API key)",
+            "Anthropic Claude (requires Anthropic API key)"
           ],
-          "default": "copilot",
+          "default": "chatgpt",
           "description": "LLM provider to use for code analysis"
-        },
-        "autodiff.showChangesView": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show the Changes view in AutoDiff sidebar"
-        },
-        "autodiff.showResultsView": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show the Results view in AutoDiff sidebar"
-        },
-        "autodiff.showSettingsView": {
-          "type": "boolean",
-          "default": false,
-          "description": "Show the Settings view in AutoDiff sidebar"
         },
         "autodiff.enableLLMAnalysis": {
           "type": "boolean",
@@ -203,6 +154,11 @@
           "type": "string",
           "default": "",
           "description": "Google Gemini API Key (only needed if using Gemini provider)"
+        },
+        "autodiff.claudeApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Anthropic Claude API Key (only needed if using Claude provider)"
         },
         "autodiff.baseBranch": {
           "type": "string",
