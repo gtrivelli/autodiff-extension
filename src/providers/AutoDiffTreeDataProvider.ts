@@ -162,15 +162,16 @@ export class AutoDiffTreeDataProvider implements vscode.TreeDataProvider<ReviewI
         return this.changedFiles;
     }
 
-    updateReviewResults(reviewType: string, results: any[]): void {
-        // Process review results and update file statuses
-        for (const file of this.changedFiles) {
+    updateReviewResults(reviewType: string, results: any[]): void {   
+        try {
+            // Process review results and update file statuses
+            for (const file of this.changedFiles) {
             if (!this.reviewResults.has(file)) {
                 this.reviewResults.set(file, { file, results: {} });
             }
 
             const fileResult = this.reviewResults.get(file)!;
-            const fileIssues = results.filter(r => r.file === file);
+            const fileIssues = results.filter(r => r.file_path === file || r.file === file);
 
             let status: 'pass' | 'fail' | 'warning' = 'pass';
             let avgConfidence = 100;
@@ -211,7 +212,8 @@ export class AutoDiffTreeDataProvider implements vscode.TreeDataProvider<ReviewI
             fileResult.results[reviewType] = {
                 status,
                 confidence: avgConfidence,
-                issues: fileIssues.length
+                issues: fileIssues.length,
+                issueDetails: fileIssues // Store individual issues for tree view
             };
         }
 
@@ -228,6 +230,9 @@ export class AutoDiffTreeDataProvider implements vscode.TreeDataProvider<ReviewI
         }
 
         this.refresh();
+        } catch (error) {
+            console.error('[AutoDiff] Error in updateReviewResults:', error);
+        }
     }
 
     // New method to handle DTO-based results
@@ -534,7 +539,15 @@ export class AutoDiffTreeDataProvider implements vscode.TreeDataProvider<ReviewI
                     result.issueDetails.forEach((issue: IssueDTO, index: number) => {
                         const lineInfo = DTOUtils.formatLineNumbers(issue.line_numbers);
                         const severityEmoji = getSeverityEmoji(issue.severity);
-                        const reviewTypeFormatted = formatReviewType(reviewType);
+                        
+                        // Use the specific review type from the issue, or fall back to general logic
+                        const specificReviewType = (issue as any).review_type;
+                        const reviewTypeFormatted = specificReviewType 
+                            ? formatReviewType(specificReviewType)
+                            : (Object.keys(fileResult.results).length > 1 
+                                ? `🔍 Multiple Reviews (${Object.keys(fileResult.results).join(', ')})`
+                                : formatReviewType(reviewType));
+                            
                         const item = new ReviewItem(
                             `${severityEmoji} ${issue.issue}`,
                             `Review Type: ${reviewTypeFormatted}\nFile: ${issue.file_path}\nLine: ${lineInfo}\nSeverity: ${issue.severity}\nConfidence: ${issue.confidence}%\n\nCode: ${issue.code}\n\nSuggestion: ${issue.suggestion}`,
@@ -676,7 +689,15 @@ export class AutoDiffTreeDataProvider implements vscode.TreeDataProvider<ReviewI
                             result.issueDetails.forEach((issue: IssueDTO) => {
                                 const lineInfo = DTOUtils.formatLineNumbers(issue.line_numbers);
                                 const severityEmoji = getSeverityEmoji(issue.severity);
-                                const reviewTypeFormatted = formatReviewType(reviewType);
+                                
+                                // Use the specific review type from the issue, or fall back to general logic
+                                const specificReviewType = (issue as any).review_type;
+                                const reviewTypeFormatted = specificReviewType 
+                                    ? formatReviewType(specificReviewType)
+                                    : (Object.keys(fileResult.results).length > 1 
+                                        ? `🔍 Multiple Reviews (${Object.keys(fileResult.results).join(', ')})`
+                                        : formatReviewType(reviewType));
+                                    
                                 const item = new ReviewItem(
                                     `${severityEmoji} ${issue.issue}`,
                                     `Review Type: ${reviewTypeFormatted}\nFile: ${issue.file_path}\nLine: ${lineInfo}\nSeverity: ${issue.severity}\nConfidence: ${issue.confidence}%\n\nCode: ${issue.code}\n\nSuggestion: ${issue.suggestion}`,
@@ -696,7 +717,15 @@ export class AutoDiffTreeDataProvider implements vscode.TreeDataProvider<ReviewI
                             result.issueDetails.forEach((issue: IssueDTO) => {
                                 const lineInfo = DTOUtils.formatLineNumbers(issue.line_numbers);
                                 const severityEmoji = getSeverityEmoji(issue.severity);
-                                const reviewTypeFormatted = formatReviewType(reviewType);
+                                
+                                // Use the specific review type from the issue, or fall back to general logic
+                                const specificReviewType = (issue as any).review_type;
+                                const reviewTypeFormatted = specificReviewType 
+                                    ? formatReviewType(specificReviewType)
+                                    : (Object.keys(fileResult.results).length > 1 
+                                        ? `🔍 Multiple Reviews (${Object.keys(fileResult.results).join(', ')})`
+                                        : formatReviewType(reviewType));
+                                    
                                 const item = new ReviewItem(
                                     `${severityEmoji} ${issue.issue}`,
                                     `Review Type: ${reviewTypeFormatted}\nFile: ${issue.file_path}\nLine: ${lineInfo}\nSeverity: ${issue.severity}\nConfidence: ${issue.confidence}%\n\nCode: ${issue.code}\n\nSuggestion: ${issue.suggestion}`,

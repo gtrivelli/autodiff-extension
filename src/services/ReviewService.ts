@@ -98,7 +98,8 @@ export class ReviewService {
                 const args = [
                     '--modes', ...modes,
                     '--output', 'plain',  // Use plain output format (json no longer supported)
-                    '--base', baseBranch
+                    '--base', baseBranch,
+                    '--prompts-dir', path.join(backendPath, 'prompts')
                 ];
 
                 // Add --include-untracked flag if we have untracked files
@@ -186,20 +187,25 @@ export class ReviewService {
         // Parse the plain text output using the legacy parser
         // (JSON output is no longer supported by the backend)
         const results = parseReviewResults(pythonOutput);
-        
         if (outputChannel) {
             outputChannel.appendLine(`📊 Analysis complete: ${results.length} issues found\n`);
         }
 
         if (results.length > 0) {
-            // Group results by review type based on the analysis that was performed
+            // For multiple review types, we need to call updateReviewResults once for each type
+            // but with all results, since the backend analyzes all modes together
             if (modes.length === 1) {
                 // Single review type - update directly
                 provider.updateReviewResults(modes[0], results);
             } else {
-                // Multiple review types - we need to process each type
-                for (const reviewType of modes) {
-                    provider.updateReviewResults(reviewType, results);
+                // Multiple review types - call once with first mode and all results
+                // The tree provider will store results under all relevant review types
+                provider.updateReviewResults(modes[0], results);
+                
+                // For the remaining modes, just mark them as completed with empty results
+                // This ensures all selected review types show as completed
+                for (let i = 1; i < modes.length; i++) {
+                    provider.updateReviewResults(modes[i], []);
                 }
             }
         } else {

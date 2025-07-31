@@ -43,7 +43,21 @@ export function parseReviewResults(output: string): any[] {
         if (issueMatch) {
             // Save previous issue if it exists
             if (inIssueBlock && currentIssue.issue) {
-                currentIssue.file = currentFile;
+                currentIssue.file_path = currentFile || currentIssue.file || currentIssue.file_path;
+                
+                // Convert line_number string to line_numbers array for DTO compatibility
+                if (currentIssue.line_number) {
+                    const lineNum = parseInt(currentIssue.line_number);
+                    currentIssue.line_numbers = isNaN(lineNum) ? [] : [lineNum];
+                    delete currentIssue.line_number; // Remove the old property
+                }
+                
+                // Ensure file_path is set and remove old file property
+                if (currentIssue.file && !currentIssue.file_path) {
+                    currentIssue.file_path = currentIssue.file;
+                }
+                delete currentIssue.file; // Remove the old property
+                
                 results.push({ ...currentIssue });
             }
             // Start new issue
@@ -78,6 +92,9 @@ export function parseReviewResults(output: string): any[] {
                     case 'file':
                         currentIssue.file = value;
                         break;
+                    case 'review_type':
+                        currentIssue.review_type = value;
+                        break;
                 }
             }
         }
@@ -85,7 +102,21 @@ export function parseReviewResults(output: string): any[] {
 
     // Don't forget the last issue
     if (inIssueBlock && currentIssue.issue) {
-        currentIssue.file = currentFile || currentIssue.file;
+        currentIssue.file_path = currentFile || currentIssue.file || currentIssue.file_path;
+        
+        // Convert line_number string to line_numbers array for DTO compatibility
+        if (currentIssue.line_number) {
+            const lineNum = parseInt(currentIssue.line_number);
+            currentIssue.line_numbers = isNaN(lineNum) ? [] : [lineNum];
+            delete currentIssue.line_number; // Remove the old property
+        }
+        
+        // Ensure file_path is set and remove old file property
+        if (currentIssue.file && !currentIssue.file_path) {
+            currentIssue.file_path = currentIssue.file;
+        }
+        delete currentIssue.file; // Remove the old property
+        
         results.push({ ...currentIssue });
     }
 

@@ -323,6 +323,12 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
+	// Fallback command for issue review (same as navigate to issue)
+	const runIssueReviewDisposable = vscode.commands.registerCommand('autodiff.runIssueReview', async (reviewType: string) => {
+		// This command shouldn't be called normally, but if it is, just show a message
+		vscode.window.showInformationMessage(`Issue review command called for: ${reviewType}. This should use navigation instead.`);
+	});
+
 	context.subscriptions.push(
 		disposable,
 		securityReviewDisposable,
@@ -341,7 +347,8 @@ export async function activate(context: vscode.ExtensionContext) {
 		toggleQualityReviewDisposable,
 		toggleBranchComparisonDisposable,
 		toggleDebugOutputDisposable,
-		navigateToIssueDisposable
+		navigateToIssueDisposable,
+		runIssueReviewDisposable
 	);
 }
 
