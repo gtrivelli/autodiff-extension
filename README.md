@@ -169,6 +169,7 @@ Suggestion: Add aria-label or descriptive text
 
 - **Frontend**: TypeScript VS Code extension with tree view providers
 - **Backend**: Python FastAPI server with LLM integrations
+- **Data Exchange**: Robust JSON/DTO format for reliable communication between frontend and backend
 - **AI Integration**: Supports multiple LLM providers with unified interface
 - **Git Integration**: Uses VS Code's Git API and command-line git
 

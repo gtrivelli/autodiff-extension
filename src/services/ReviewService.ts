@@ -97,7 +97,7 @@ export class ReviewService {
 
                 const args = [
                     '--modes', ...modes,
-                    '--output', 'plain',  // Use plain output format (json no longer supported)
+                    '--output', 'json',  // Use JSON output format instead of plain
                     '--base', baseBranch,
                     '--prompts-dir', path.join(backendPath, 'prompts')
                 ];
@@ -184,34 +184,77 @@ export class ReviewService {
         updateFileDecorations?: () => void,
         outputChannel?: vscode.OutputChannel | null
     ): Promise<void> {
-        // Parse the plain text output using the legacy parser
-        // (JSON output is no longer supported by the backend)
-        const results = parseReviewResults(pythonOutput);
-        if (outputChannel) {
-            outputChannel.appendLine(`📊 Analysis complete: ${results.length} issues found\n`);
-        }
+        try {
+            // Try to parse as JSON (DTO format) first
+            const analysisResult = DTOUtils.parseFromJSON(pythonOutput);
+            
+            if (analysisResult) {
+                // Use DTO-based parsing
+                if (outputChannel) {
+                    outputChannel.appendLine(`📊 Analysis complete: ${analysisResult.total_issues} issues found\n`);
+                }
 
-        if (results.length > 0) {
-            // For multiple review types, we need to call updateReviewResults once for each type
-            // but with all results, since the backend analyzes all modes together
-            if (modes.length === 1) {
-                // Single review type - update directly
-                provider.updateReviewResults(modes[0], results);
+                provider.updateReviewResultsFromDTO(analysisResult, modes);
             } else {
-                // Multiple review types - call once with first mode and all results
-                // The tree provider will store results under all relevant review types
-                provider.updateReviewResults(modes[0], results);
+                // Fallback to legacy text parsing if JSON parsing fails
+                if (outputChannel) {
+                    outputChannel.appendLine(`⚠️  Falling back to legacy text parsing...\n`);
+                }
                 
-                // For the remaining modes, just mark them as completed with empty results
-                // This ensures all selected review types show as completed
-                for (let i = 1; i < modes.length; i++) {
-                    provider.updateReviewResults(modes[i], []);
+                const results = parseReviewResults(pythonOutput);
+                if (outputChannel) {
+                    outputChannel.appendLine(`📊 Analysis complete: ${results.length} issues found\n`);
+                }
+
+                if (results.length > 0) {
+                    // For multiple review types, we need to call updateReviewResults once for each type
+                    // but with all results, since the backend analyzes all modes together
+                    if (modes.length === 1) {
+                        // Single review type - update directly
+                        provider.updateReviewResults(modes[0], results);
+                    } else {
+                        // Multiple review types - call once with first mode and all results
+                        // The tree provider will store results under all relevant review types
+                        provider.updateReviewResults(modes[0], results);
+                        
+                        // For the remaining modes, just mark them as completed with empty results
+                        // This ensures all selected review types show as completed
+                        for (let i = 1; i < modes.length; i++) {
+                            provider.updateReviewResults(modes[i], []);
+                        }
+                    }
+                } else {
+                    // No issues found - still need to update to show 'pass' status
+                    for (const reviewType of modes) {
+                        provider.updateReviewResults(reviewType, []);
+                    }
                 }
             }
-        } else {
-            // No issues found - still need to update to show 'pass' status
-            for (const reviewType of modes) {
-                provider.updateReviewResults(reviewType, []);
+        } catch (error) {
+            if (outputChannel) {
+                outputChannel.appendLine(`❌ Error parsing results: ${error}\n`);
+            }
+            
+            // Fallback to legacy parsing on any error
+            const results = parseReviewResults(pythonOutput);
+            if (outputChannel) {
+                outputChannel.appendLine(`📊 Fallback parsing complete: ${results.length} issues found\n`);
+            }
+
+            // Handle results same as in the fallback case above
+            if (results.length > 0) {
+                if (modes.length === 1) {
+                    provider.updateReviewResults(modes[0], results);
+                } else {
+                    provider.updateReviewResults(modes[0], results);
+                    for (let i = 1; i < modes.length; i++) {
+                        provider.updateReviewResults(modes[i], []);
+                    }
+                }
+            } else {
+                for (const reviewType of modes) {
+                    provider.updateReviewResults(reviewType, []);
+                }
             }
         }
 
